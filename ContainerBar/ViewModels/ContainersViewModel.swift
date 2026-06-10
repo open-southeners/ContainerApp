@@ -232,8 +232,24 @@ final class ContainersViewModel {
         selectedContainerID = container.id
     }
 
-    /// TODO: Phase 3 — launch Terminal.app with `container exec -it <id> /bin/sh`
     func openShell(_ container: ContainerSummary) {
-        // no-op until Phase 3
+        guard let command = TerminalLauncher.shellCommand(forContainerID: container.id) else {
+            errorMessage = "Cannot open a shell for container \"\(container.id)\": invalid identifier."
+            return
+        }
+        TerminalLauncher.open(command: command)
+    }
+
+    func prune() async {
+        do {
+            try await runtime.pruneContainers()
+            errorMessage = nil
+            await refresh()
+            if selectedContainer == nil {
+                selectedContainerID = nil
+            }
+        } catch {
+            handle(error)
+        }
     }
 }

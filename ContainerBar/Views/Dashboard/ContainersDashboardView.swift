@@ -4,7 +4,7 @@ import SwiftUI
 struct ContainersDashboardView: View {
     @Environment(ContainersViewModel.self) private var model
 
-    @State private var showPruneAlert = false
+    @State private var isShowingPruneConfirmation = false
 
     var body: some View {
         @Bindable var model = model
@@ -50,17 +50,16 @@ struct ContainersDashboardView: View {
                 .disabled(true)
 
                 Button {
-                    showPruneAlert = true
+                    isShowingPruneConfirmation = true
                 } label: {
                     Label("Prune", systemImage: "trash.slash")
                 }
             }
         }
-        .alert("Prune", isPresented: $showPruneAlert) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            // TODO: Phase 3 — implement Prune (remove stopped containers + dangling images)
-            Text("Prune is not yet implemented. It will be available in Phase 3.")
+        .confirmationDialog("Remove all stopped containers?", isPresented: $isShowingPruneConfirmation) {
+            Button("Prune", role: .destructive) {
+                Task { await model.prune() }
+            }
         }
         .task {
             await model.refresh()
