@@ -118,6 +118,10 @@ struct ContainerContentView: View {
                         }
                         .width(min: 80, ideal: 100)
                     }
+                    // Size the table to its rows so it doesn't pad out a short
+                    // list with empty filler rows. Caps at `Self.maxTableHeight`,
+                    // beyond which the table scrolls internally.
+                    .frame(maxHeight: tableHeight(rowCount: model.filteredContainers.count))
                 }
             }
 
@@ -138,6 +142,20 @@ struct ContainerContentView: View {
     }
 
     // MARK: Helpers
+
+    /// Approximate height of one table row, including SwiftUI's default cell padding.
+    private static let tableRowHeight: CGFloat = 28
+    /// Height of the table header row.
+    private static let tableHeaderHeight: CGFloat = 28
+    /// Upper bound; past this the table keeps its height and scrolls internally.
+    private static let maxTableHeight: CGFloat = 600
+
+    /// Height that fits exactly `rowCount` rows plus the header, capped so long
+    /// lists don't push the detail pane off-screen.
+    private func tableHeight(rowCount: Int) -> CGFloat {
+        let contentHeight = Self.tableHeaderHeight + CGFloat(rowCount) * Self.tableRowHeight
+        return min(contentHeight, Self.maxTableHeight)
+    }
 
     private func emptyDescription(for section: SidebarSection?) -> String {
         switch section {
