@@ -25,3 +25,47 @@ targets:
         DEVELOPMENT_TEAM: ""
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
+
+  ContainerBarTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "15.0"
+    sources:
+      - path: ContainerBarTests
+      - path: Fixtures
+        buildPhase: resources
+        type: folder
+    dependencies:
+      - target: ContainerBar
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        PRODUCT_BUNDLE_IDENTIFIER: com.opensoutheners.ContainerBarTests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGNING_ALLOWED: YES
+        DEVELOPMENT_TEAM: ""
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/ContainerBar.app/Contents/MacOS/ContainerBar"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+
+schemes:
+  ContainerBar:
+    build:
+      targets:
+        ContainerBar: all
+        ContainerBarTests: [testing]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - ContainerBarTests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
