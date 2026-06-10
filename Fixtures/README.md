@@ -9,6 +9,7 @@ Used by decoder unit tests; re-capture if the CLI version changes.
 | `list-all.json` | `container list --all --format json` | one running container |
 | `list-all-stopped.json` | `container list --all --format json` | same container, stopped |
 | `stats.json` | `container stats --format json --no-stream` | running container |
+| `list-all-ports.json` | `container list --all --format json` | container run with `-p 8080:80` (captured 2026-06-10) |
 | `inspect.json` | `container inspect plan-test` | array of full container objects |
 
 ## Observed shapes (the facts the DTOs are built on)
@@ -19,7 +20,8 @@ Used by decoder unit tests; re-capture if the CLI version changes.
 - `configuration.creationDate` — ISO 8601 (`2026-06-10T14:29:21Z`)
 - `configuration.image.reference` — e.g. `docker.io/library/alpine:latest`
 - `configuration.initProcess.executable` + `.arguments` — command
-- `configuration.publishedPorts` — array (empty here)
+- `configuration.publishedPorts` — array; populated element shape (see `list-all-ports.json`):
+  `{containerPort: Int, count: Int, hostAddress: String, hostPort: Int, proto: String}`
 - `configuration.resources.cpus` / `.memoryInBytes`
 - `status.state` — `"running"` / `"stopped"` (observed values)
 - `status.startedDate` — ISO 8601; **retained after stop**
