@@ -105,7 +105,10 @@ struct MenuBarContainerView: View {
                 }
                 .buttonStyle(.plain)
 
-                // Start / Stop system depending on current status
+                // Start / Stop system depending on current status.
+                // The "Start System" button is suppressed here when the system
+                // is stopped, because the stopped-state panel above already
+                // shows its own prominent Start System button.
                 if model.systemStatus == .running {
                     Button {
                         Task {
@@ -115,7 +118,7 @@ struct MenuBarContainerView: View {
                         Label("Stop System", systemImage: "stop.fill")
                     }
                     .buttonStyle(.plain)
-                } else {
+                } else if model.systemStatus != .stopped {
                     Button {
                         Task {
                             await model.startSystem()

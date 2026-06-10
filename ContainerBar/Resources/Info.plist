@@ -21,7 +21,7 @@
 	<key>NSAppleEventsUsageDescription</key>
 	<string>ContainerBar opens Terminal to give you a shell inside a container.</string>
 	<key>NSHumanReadableCopyright</key>
-	<string>$(PRODUCT_NAME)</string>
+	<string>Copyright © 2026 Open Southeners</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>

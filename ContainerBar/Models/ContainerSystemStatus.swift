@@ -1,4 +1,4 @@
-enum ContainerSystemStatus: Hashable, Sendable {
+enum ContainerSystemStatus: Equatable, Hashable, Sendable {
     case running
     case stopped
     case unavailable

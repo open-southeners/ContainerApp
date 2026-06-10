@@ -24,11 +24,11 @@ struct ContainerDetailPanel: View {
                 // State badge
                 Label(container.state.displayName, systemImage: container.state.systemImage)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(stateColor(container.state))
+                    .foregroundStyle(container.state.color)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(stateColor(container.state).opacity(0.15), in: Capsule())
-                    .overlay(Capsule().strokeBorder(stateColor(container.state).opacity(0.4), lineWidth: 1))
+                    .background(container.state.color.opacity(0.15), in: Capsule())
+                    .overlay(Capsule().strokeBorder(container.state.color.opacity(0.4), lineWidth: 1))
 
                 Spacer()
 
@@ -117,15 +117,4 @@ struct ContainerDetailPanel: View {
         }
     }
 
-    // MARK: Helpers
-
-    private func stateColor(_ state: ContainerState) -> Color {
-        switch state {
-        case .running:  return .green
-        case .stopped:  return .secondary
-        case .created:  return .blue
-        case .exited:   return .orange
-        case .unknown:  return .gray
-        }
-    }
 }

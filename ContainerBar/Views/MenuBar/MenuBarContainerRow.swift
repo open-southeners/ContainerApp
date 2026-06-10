@@ -12,7 +12,7 @@ struct MenuBarContainerRow: View {
         HStack(spacing: 8) {
             // State icon
             Image(systemName: container.state.systemImage)
-                .foregroundStyle(stateColor)
+                .foregroundStyle(container.state.color)
                 .frame(width: 16)
 
             // Name + image
@@ -66,17 +66,5 @@ struct MenuBarContainerRow: View {
             }
         }
         .padding(.vertical, 2)
-    }
-
-    // MARK: - Helpers
-
-    private var stateColor: Color {
-        switch container.state {
-        case .running:  return .green
-        case .stopped:  return .secondary
-        case .created:  return .blue
-        case .exited:   return .red
-        case .unknown:  return .secondary
-        }
     }
 }
