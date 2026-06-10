@@ -262,12 +262,3 @@ final class MockContainerRuntime: ContainerRuntime {
     }
 }
 
-// MARK: - Errors
-
-enum ContainerRuntimeError: Error {
-    case notFound(id: String)
-    case commandFailed(exitCode: Int32, stderr: String)
-    case decodingFailed(raw: String)
-    case cliNotFound
-    case systemNotRunning
-}
