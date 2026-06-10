@@ -25,12 +25,13 @@ struct CLIContainerDTO: Decodable {
             let arguments: [String]?
         }
 
-        /// Lenient port entry — real populated shape not yet sampled.
-        /// TODO: update once a fixture with non-empty publishedPorts is captured.
+        /// Port entry shape as observed in `list-all-ports.json`.
         struct PublishedPort: Decodable {
-            let hostPort: Int?
             let containerPort: Int?
-            let `protocol`: String?
+            let count: Int?
+            let hostAddress: String?
+            let hostPort: Int?
+            let proto: String?
         }
 
         struct Resources: Decodable {
@@ -118,20 +119,25 @@ extension CLIContainerDTO {
         let createdAt: Date? = configuration?.creationDate.flatMap(ISO8601DateFormatter.flexibleParse)
         let startedAt: Date? = status?.startedDate.flatMap(ISO8601DateFormatter.flexibleParse)
 
-        // Ports: publishedPorts is an empty array in all current fixtures.
-        // TODO: update this mapping once a fixture with non-empty publishedPorts is captured
-        //       so the exact populated shape can be verified.
+        // Ports: map each entry to "hostPort->containerPort/proto"; omit "0.0.0.0:" prefix
+        // for brevity; include the host address for all other bind addresses.
         let ports: String?
         let portEntries = configuration?.publishedPorts ?? []
         if portEntries.isEmpty {
             ports = nil
         } else {
             let joined = portEntries.compactMap { entry -> String? in
-                guard let host = entry.hostPort, let container = entry.containerPort else {
+                guard let hostPort = entry.hostPort, let containerPort = entry.containerPort else {
                     return nil
                 }
-                let proto = entry.protocol.map { "/\($0)" } ?? ""
-                return "\(host)->\(container)\(proto)"
+                let proto = entry.proto.map { "/\($0)" } ?? ""
+                let hostPrefix: String
+                if let addr = entry.hostAddress, !addr.isEmpty, addr != "0.0.0.0" {
+                    hostPrefix = "\(addr):\(hostPort)"
+                } else {
+                    hostPrefix = "\(hostPort)"
+                }
+                return "\(hostPrefix)->\(containerPort)\(proto)"
             }.joined(separator: ", ")
             ports = joined.isEmpty ? nil : joined
         }
@@ -189,9 +195,8 @@ extension CLIStatsDTO {
         return ContainerStats(
             id: id,
             name: nil,
-            // TODO: Phase 4 — cpuUsageUsec is cumulative; computing a percentage requires
-            //       two samples and a time delta. Leave nil until then.
-            cpuPercent: nil,
+            cpuPercent: nil,            // Computed from two samples by the view model
+            cpuUsageUsec: cpuUsageUsec, // Cumulative — passed through for delta computation
             memoryUsageBytes: memUsage,
             memoryLimitBytes: memLimit,
             memoryText: memoryText,

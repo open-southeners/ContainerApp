@@ -62,7 +62,13 @@ struct ContainersDashboardView: View {
             }
         }
         .task {
+            // Initial full refresh (shows isLoading indicator)
             await model.refresh()
+            // Poll every 5 s with quiet refreshes; task is cancelled when the window closes.
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                await model.refresh(quiet: true)
+            }
         }
     }
 }

@@ -88,6 +88,24 @@ struct ContainerCLIModelsTests {
         #expect(s.blockIOText != nil)
     }
 
+    // MARK: list-all-ports.json (ports mapping)
+
+    @Test("Decodes list-all-ports.json: ports mapped to 'hostPort->containerPort/proto'")
+    func decodeListAllPorts() throws {
+        let json = try loadFixture(named: "list-all-ports")
+        let containers = try FlexibleContainerDecoder.decodeList(from: json)
+
+        #expect(containers.count == 1)
+
+        let c = try #require(containers.first)
+        #expect(c.id == "ports-test")
+        #expect(c.state == .running)
+
+        // hostAddress is "0.0.0.0" → omitted; expected format: "8080->80/tcp"
+        let ports = try #require(c.ports)
+        #expect(ports == "8080->80/tcp")
+    }
+
     // MARK: Malformed input
 
     @Test("Malformed input throws decodingFailed")
