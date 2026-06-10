@@ -34,6 +34,10 @@ private actor MockStore {
     func delete(id: String) {
         containers.removeAll { $0.id == id }
     }
+
+    func prune() {
+        containers.removeAll { $0.state != .running }
+    }
 }
 
 // MARK: - Mock runtime
@@ -244,6 +248,11 @@ final class MockContainerRuntime: ContainerRuntime {
     func delete(id: String) async throws {
         try await Task.sleep(for: .milliseconds(200))
         await store.delete(id: id)
+    }
+
+    func pruneContainers() async throws {
+        try await Task.sleep(for: .milliseconds(200))
+        await store.prune()
     }
 
     func startSystem() async throws {

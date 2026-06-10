@@ -8,6 +8,8 @@ protocol ContainerRuntime: Sendable {
     func stop(id: String) async throws
     func kill(id: String) async throws
     func delete(id: String) async throws
+    /// Removes all stopped containers (`container prune`).
+    func pruneContainers() async throws
     func startSystem() async throws
     func stopSystem() async throws
     func systemStatus() async throws -> ContainerSystemStatus

@@ -177,6 +177,11 @@ final class ContainerCLIRuntime: ContainerRuntime {
         try await runChecked(["delete", id], id: id)
     }
 
+    /// `container prune` — removes all stopped containers.
+    func pruneContainers() async throws {
+        try await runChecked(["prune"])
+    }
+
     /// `container system start`
     ///
     /// The CLI prompts interactively when no kernel is installed.  Because our
