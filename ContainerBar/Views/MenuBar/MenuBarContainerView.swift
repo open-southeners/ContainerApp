@@ -102,6 +102,7 @@ struct MenuBarContainerView: View {
                     }
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
+                        .menuRowLabel()
                 }
                 .buttonStyle(.plain)
 
@@ -116,6 +117,7 @@ struct MenuBarContainerView: View {
                         }
                     } label: {
                         Label("Stop System", systemImage: "stop.fill")
+                            .menuRowLabel()
                     }
                     .buttonStyle(.plain)
                 } else if model.systemStatus != .stopped {
@@ -125,6 +127,7 @@ struct MenuBarContainerView: View {
                         }
                     } label: {
                         Label("Start System", systemImage: "play.fill")
+                            .menuRowLabel()
                     }
                     .buttonStyle(.plain)
                 }
@@ -134,17 +137,19 @@ struct MenuBarContainerView: View {
                     openWindow(id: "containers-window")
                 } label: {
                     Label("Show More\u{2026}", systemImage: "rectangle.expand.diagonal")
+                        .menuRowLabel()
                 }
                 .buttonStyle(.plain)
 
                 Divider()
-                    .padding(.vertical, 2)
+                    .padding(.vertical, 4)
 
                 // Quit
                 Button {
                     NSApplication.shared.terminate(nil)
                 } label: {
                     Label("Quit ContainerBar", systemImage: "power")
+                        .menuRowLabel()
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.red)
@@ -175,6 +180,31 @@ struct MenuBarContainerView: View {
         case .stopped:     return .orange
         case .unavailable: return .red
         case .unknown:     return .secondary
+        }
+    }
+}
+
+// MARK: - Footer row styling
+
+private extension View {
+    /// Standard styling for a footer menu row: roomier icon/text spacing,
+    /// a full-width hit target, and vertical padding so rows aren't cramped.
+    func menuRowLabel() -> some View {
+        self
+            .labelStyle(MenuRowLabelStyle())
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
+    }
+}
+
+/// Label style that gives footer rows consistent icon width and spacing.
+private struct MenuRowLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 8) {
+            configuration.icon
+                .frame(width: 16, alignment: .center)
+            configuration.title
         }
     }
 }
