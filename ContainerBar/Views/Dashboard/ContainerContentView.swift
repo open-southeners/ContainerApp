@@ -22,7 +22,47 @@ struct ContainerContentView: View {
                 description: "Settings are coming soon."
             )
         default:
-            containerListContent(model: model)
+            // System-status states take precedence over the container table.
+            if model.systemStatus == .unavailable {
+                cliNotFoundContent
+            } else if model.systemStatus == .stopped {
+                systemStoppedContent(model: model)
+            } else {
+                containerListContent(model: model)
+            }
+        }
+    }
+
+    // MARK: System-status full-area states
+
+    private var cliNotFoundContent: some View {
+        ContentUnavailableView {
+            Label("Apple container CLI not found", systemImage: "exclamationmark.triangle")
+        } description: {
+            Text("Install Apple container, then configure the path in Settings.")
+        }
+    }
+
+    @ViewBuilder
+    private func systemStoppedContent(model: ContainersViewModel) -> some View {
+        VStack(spacing: 16) {
+            ContentUnavailableView {
+                Label("Container system is not running", systemImage: "power")
+            } description: {
+                Text("Start the container system to list and manage containers.")
+            } actions: {
+                if model.isLoading {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .controlSize(.regular)
+                } else {
+                    Button("Start System") {
+                        Task { await model.startSystem() }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                }
+            }
         }
     }
 

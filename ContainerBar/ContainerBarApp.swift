@@ -4,7 +4,7 @@ import SwiftUI
 
 @main
 struct ContainerBarApp: App {
-    @State private var model = ContainersViewModel(runtime: MockContainerRuntime())
+    @State private var model = ContainersViewModel(runtime: ContainerCLIRuntime())
 
     var body: some Scene {
         MenuBarExtra {

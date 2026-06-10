@@ -98,14 +98,23 @@ final class ContainersViewModel {
         isLoading = true
         defer { isLoading = false }
         do {
+            // Fetch containers and system status together; a failure here is fatal
+            // for the current cycle and routes through the central error handler.
             async let fetchedContainers = runtime.listContainers()
             async let fetchedStatus = runtime.systemStatus()
-            async let fetchedStats = runtime.stats(id: nil)
             containers = try await fetchedContainers
             systemStatus = try await fetchedStatus
-            stats = try await fetchedStats
             errorMessage = nil
         } catch {
+            handle(error)
+            return
+        }
+
+        // Fetch stats separately so a stats failure never blanks the container list.
+        do {
+            stats = try await runtime.stats(id: nil)
+        } catch {
+            // Non-fatal: keep stale stats, surface a non-blocking error message.
             errorMessage = error.localizedDescription
         }
     }
@@ -117,6 +126,32 @@ final class ContainersViewModel {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    // MARK: Central error handler
+
+    /// Routes runtime errors to the appropriate system-status / error-message state.
+    /// Call from any action method's catch block for consistent behaviour.
+    private func handle(_ error: Error) {
+        if let runtimeError = error as? ContainerRuntimeError {
+            switch runtimeError {
+            case .cliNotFound:
+                systemStatus = .unavailable
+                errorMessage = nil
+                containers = []
+                stats = []
+                return
+            case .systemNotRunning:
+                systemStatus = .stopped
+                errorMessage = nil
+                containers = []
+                stats = []
+                return
+            default:
+                break
+            }
+        }
+        errorMessage = error.localizedDescription
     }
 
     func loadLogs(_ container: ContainerSummary) async {
@@ -143,7 +178,7 @@ final class ContainersViewModel {
             errorMessage = nil
             await refresh()
         } catch {
-            errorMessage = error.localizedDescription
+            handle(error)
         }
     }
 
@@ -153,7 +188,7 @@ final class ContainersViewModel {
             errorMessage = nil
             await refresh()
         } catch {
-            errorMessage = error.localizedDescription
+            handle(error)
         }
     }
 
@@ -166,18 +201,21 @@ final class ContainersViewModel {
             errorMessage = nil
             await refresh()
         } catch {
-            errorMessage = error.localizedDescription
+            handle(error)
         }
     }
 
     func startSystem() async {
+        isLoading = true
+        defer { isLoading = false }
         do {
             try await runtime.startSystem()
             errorMessage = nil
-            await refresh()
         } catch {
-            errorMessage = error.localizedDescription
+            handle(error)
+            return
         }
+        await refresh()
     }
 
     func stopSystem() async {
@@ -186,7 +224,7 @@ final class ContainersViewModel {
             errorMessage = nil
             await refresh()
         } catch {
-            errorMessage = error.localizedDescription
+            handle(error)
         }
     }
 

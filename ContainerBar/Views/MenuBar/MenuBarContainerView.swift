@@ -40,8 +40,41 @@ struct MenuBarContainerView: View {
                 Divider()
             }
 
-            // MARK: Container rows
-            if model.runningContainers.isEmpty {
+            // MARK: Container rows (or system-status replacement)
+            if model.systemStatus == .unavailable {
+                Text("Apple container CLI not found. Install Apple container, then configure the path in Settings.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else if model.systemStatus == .stopped {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Container system is not running.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    if model.isLoading {
+                        HStack(spacing: 6) {
+                            ProgressView()
+                                .progressViewStyle(.circular)
+                                .controlSize(.small)
+                            Text("Starting…")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    } else {
+                        Button("Start System") {
+                            Task { await model.startSystem() }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .disabled(model.isLoading)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+            } else if model.runningContainers.isEmpty {
                 Text("No containers running.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
