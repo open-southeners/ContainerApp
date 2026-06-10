@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// Main content area for the dashboard.
-/// Switches on sidebar selection: Images/Settings show a placeholder;
-/// all other sections show the container table + optional detail panel.
+/// Switches on sidebar selection: Images shows a placeholder; Settings renders
+/// SettingsView; all other sections show the container table + optional detail panel.
 struct ContainerContentView: View {
     @Environment(ContainersViewModel.self) private var model
 
@@ -16,11 +16,7 @@ struct ContainerContentView: View {
                 description: "Image management is coming soon."
             )
         case .settings:
-            EmptyStateView(
-                title: "Settings",
-                systemImage: "gear",
-                description: "Settings are coming soon."
-            )
+            SettingsView()
         default:
             // System-status states take precedence over the container table.
             if model.systemStatus == .unavailable {
@@ -103,7 +99,7 @@ struct ContainerContentView: View {
 
                         TableColumn("State") { container in
                             Label(container.state.displayName, systemImage: container.state.systemImage)
-                                .foregroundStyle(stateColor(container.state))
+                                .foregroundStyle(container.state.color)
                                 .labelStyle(.titleAndIcon)
                         }
                         .width(min: 100, ideal: 120)
@@ -148,16 +144,6 @@ struct ContainerContentView: View {
         case .running:  return "No containers are currently running."
         case .stopped:  return "No stopped containers found."
         default:        return "No containers are available. Start the system and run a container."
-        }
-    }
-
-    private func stateColor(_ state: ContainerState) -> Color {
-        switch state {
-        case .running:  return .green
-        case .stopped:  return .secondary
-        case .created:  return .blue
-        case .exited:   return .orange
-        case .unknown:  return .gray
         }
     }
 }

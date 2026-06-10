@@ -5,11 +5,27 @@ import Foundation
 /// Isolated store for the lazily-discovered `container` binary URL.
 /// Using an actor avoids `@unchecked Sendable` while keeping the cache
 /// mutation safely serialised across concurrent callers.
+///
+/// The cache is keyed by the UserDefaults override string that was current
+/// when the resolution happened.  When the user edits the setting the key
+/// changes and the next call to `resolvedBinaryURL()` will re-run discovery.
 private actor BinaryCache {
+    /// The override key that was active when `resolvedURL` was cached.
+    /// `nil` means the cache was populated without a UserDefaults override.
+    private var cachedKey: String?
     private var resolvedURL: URL?
 
-    func get() -> URL? { resolvedURL }
-    func set(_ url: URL) { resolvedURL = url }
+    /// Returns the cached URL only when `currentKey` matches the key under
+    /// which the URL was originally cached.
+    func get(forKey currentKey: String?) -> URL? {
+        guard cachedKey == currentKey else { return nil }
+        return resolvedURL
+    }
+
+    func set(_ url: URL, forKey key: String?) {
+        resolvedURL = url
+        cachedKey = key
+    }
 }
 
 // MARK: - ContainerCLIRuntime
@@ -18,11 +34,17 @@ private actor BinaryCache {
 /// CLI (1.0.0+).  All interaction is non-interactive: `ProcessRunner` sets
 /// `/dev/null` as stdin so prompts fail immediately rather than hanging.
 ///
-/// Binary discovery order (first hit wins, result cached):
-///   1. `executableOverride` supplied at init time
-///   2. `/usr/local/bin/container`
-///   3. `/opt/homebrew/bin/container`
-///   4. `/usr/bin/which container` (trimmed stdout, exit 0 only)
+/// Binary discovery order (first hit wins, result cached per UserDefaults key):
+///   1. UserDefaults `containerCLIPath` (trimmed, non-empty, must be executable)
+///   2. `executableOverride` supplied at init time
+///   3. `/usr/local/bin/container`
+///   4. `/opt/homebrew/bin/container`
+///   5. `/usr/bin/which container` (trimmed stdout, exit 0 only)
+///
+/// The cache is keyed by the current UserDefaults override so that editing the
+/// Settings pane immediately invalidates the cached path on the next refresh.
+/// A UserDefaults path that is missing or not executable falls through silently
+/// to the rest of the chain.
 ///
 /// If none of the above resolves, every method that needs the binary will
 /// throw `ContainerRuntimeError.cliNotFound`.
@@ -48,31 +70,61 @@ final class ContainerCLIRuntime: ContainerRuntime {
 
     /// Returns the resolved binary URL, consulting the cache first.
     /// Throws `ContainerRuntimeError.cliNotFound` when all candidates fail.
+    ///
+    /// Discovery order (first hit wins):
+    ///   1. UserDefaults `containerCLIPath` (trimmed, non-empty, must be executable)
+    ///   2. `executableOverride` supplied at init time
+    ///   3. `/usr/local/bin/container`
+    ///   4. `/opt/homebrew/bin/container`
+    ///   5. `/usr/bin/which container` (trimmed stdout, exit 0 only)
+    ///
+    /// The cache is keyed by the current UserDefaults override string so that
+    /// editing the setting in the UI immediately invalidates the cached result.
+    /// UserDefaults is thread-safe to read from any isolation context.
     private func resolvedBinaryURL() async throws -> URL {
-        // Fast path: already discovered on a previous call.
-        if let cached = await cache.get() {
+        // Read the UserDefaults override on every call (cheap, thread-safe).
+        // Trim whitespace so an accidental trailing newline is ignored.
+        let udRaw = UserDefaults.standard.string(forKey: "containerCLIPath") ?? ""
+        let udOverride: String? = {
+            let trimmed = udRaw.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }()
+
+        // Fast path: cache hit for the current override key.
+        if let cached = await cache.get(forKey: udOverride) {
             return cached
         }
 
         let fm = FileManager.default
 
-        // 1. Explicit override (trusts the caller; skip existence check).
+        // 1. UserDefaults override — must exist and be executable; otherwise fall through.
+        if let udPath = udOverride {
+            let udURL = URL(fileURLWithPath: udPath)
+            if fm.isExecutableFile(atPath: udURL.path) {
+                await cache.set(udURL, forKey: udOverride)
+                return udURL
+            }
+            // Non-executable override: fall through to standard discovery below
+            // (cache miss stays; next refresh will retry).
+        }
+
+        // 2. Explicit init-time override (trusts the caller; skip existence check).
         if let override = executableOverride {
-            await cache.set(override)
+            await cache.set(override, forKey: udOverride)
             return override
         }
 
-        // 2–3. Well-known installation paths.
+        // 3–4. Well-known installation paths.
         let candidates = [
             URL(fileURLWithPath: "/usr/local/bin/container"),
             URL(fileURLWithPath: "/opt/homebrew/bin/container"),
         ]
         for url in candidates where fm.isExecutableFile(atPath: url.path) {
-            await cache.set(url)
+            await cache.set(url, forKey: udOverride)
             return url
         }
 
-        // 4. `which container` — only trust a clean exit-0 with non-empty output.
+        // 5. `which container` — only trust a clean exit-0 with non-empty output.
         let whichURL = URL(fileURLWithPath: "/usr/bin/which")
         let whichResult = try await runner.run(
             executableURL: whichURL,
@@ -83,7 +135,7 @@ final class ContainerCLIRuntime: ContainerRuntime {
             let path = whichResult.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
             if !path.isEmpty {
                 let url = URL(fileURLWithPath: path)
-                await cache.set(url)
+                await cache.set(url, forKey: udOverride)
                 return url
             }
         }
@@ -197,9 +249,12 @@ final class ContainerCLIRuntime: ContainerRuntime {
         let trimmed  = combined.trimmingCharacters(in: .whitespacesAndNewlines)
 
         // Known limitation: first-ever start requires an interactive kernel prompt.
-        // Non-interactive stdin causes immediate failure.
-        if trimmed.lowercased().contains("failed to read user input")
-            || trimmed.lowercased().contains("kernel")
+        // Non-interactive stdin causes "failed to read user input".
+        // Only these verified phrases indicate the kernel-not-configured scenario;
+        // other errors fall through to the generic commandFailed mapping below.
+        let lower = trimmed.lowercased()
+        if lower.contains("failed to read user input")
+            || lower.contains("no default kernel configured")
         {
             throw ContainerRuntimeError.commandFailed(
                 exitCode: result.exitCode,
