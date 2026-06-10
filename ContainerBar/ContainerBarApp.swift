@@ -15,7 +15,7 @@ struct ContainerBarApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        WindowGroup("Containers", id: "containers-window") {
+        Window("Containers", id: "containers-window") {
             ContainersDashboardView()
                 .environment(model)
         }
