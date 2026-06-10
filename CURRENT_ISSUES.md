@@ -8,6 +8,28 @@ Discovered during orchestrated work; not blocking, not yet fixed.
   **What:** Copyright string is `$(PRODUCT_NAME)`, so the built bundle shows just "ContainerBar" as the copyright.
   **Fix:** Set a real notice, e.g. "Copyright © 2026 Open Southeners", in the plist or via an `INFOPLIST_KEY`/project.yml setting.
 
+## Phase 2 (2026-06-10)
+
+- **Where:** `ContainerBar/Runtime/ContainerCLIModels.swift` (ports mapping, TODO in place)
+  **What:** `publishedPorts` was an empty array in every captured fixture, so the populated element shape (key names for host/container port, protocol) is guessed.
+  **Fix:** Run a container with `-p`, capture `list --all --format json`, add the fixture, and verify/adjust the `PublishedPort` DTO fields.
+
+- **Where:** `ContainerBar/Runtime/ContainerCLIModels.swift` (`cpuPercent` TODO)
+  **What:** CLI stats expose only cumulative `cpuUsageUsec` — no percentage. CPU column shows "–".
+  **Fix:** Phase 4: sample twice and compute percent from the usec delta over the interval.
+
+- **Where:** `ContainerBar/Runtime/ContainerCLIRuntime.swift` (`startSystem()` error mapping)
+  **What:** First-run kernel detection matches any error containing "kernel" — overly broad; could mislabel unrelated failures.
+  **Fix:** Match only the exact "failed to read user input" / kernel-prompt phrasing; fall through to generic commandFailed otherwise.
+
+- **Where:** `ContainerBar/Views/MenuBar/MenuBarContainerView.swift` (~line 119 footer)
+  **What:** When the system is stopped, both the stopped-state area AND the footer show a "Start System" button (duplicate).
+  **Fix:** Suppress the footer Start System button while the stopped-state panel is visible.
+
+- **Where:** `ContainerBar/ViewModels/ContainersViewModel.swift` (`startSystem()`)
+  **What:** Nested `isLoading` defers (startSystem + inner refresh) cause a false→true→false flicker at the refresh boundary; harmless today, could glitch animations tied to isLoading.
+  **Fix:** Single ownership of isLoading per operation (skip refresh's flag when called from startSystem).
+
 ## Phase 1 (2026-06-10)
 
 - **Where:** `ContainerBar/Views/Dashboard/ContainerContentView.swift` (`stateColor(_:)`) and `ContainerBar/Views/Dashboard/ContainerDetailPanel.swift` (`stateColor(_:)`)
