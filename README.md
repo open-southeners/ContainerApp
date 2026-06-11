@@ -107,3 +107,9 @@ project.yml                      # XcodeGen spec — edit this, not the .xcodepr
 2. New source files under `ContainerBar/` are picked up automatically by the target glob.
 3. When updating the CLI version, re-capture fixture output and update `Fixtures/README.md`.
 4. Known non-blocking issues are tracked in `CURRENT_ISSUES.md`.
+
+## License
+
+ContainerBar is released under the [MIT License](LICENSE).
+
+ContainerBar is an independent, standalone UI application and is **not affiliated with or endorsed by Apple**. It interacts with [Apple's `container` project](https://github.com/apple/container) (licensed under [Apache License 2.0](https://github.com/apple/container/blob/main/LICENSE)) solely by invoking the separately installed `container` CLI as an external process — no Apple `container` code is linked, embedded, or redistributed in this repository or in the built app, so its Apache 2.0 terms do not extend to this codebase. If a future release ever bundles the `container` binary inside the app, that release must ship Apple's Apache 2.0 license text and NOTICE file alongside it.
