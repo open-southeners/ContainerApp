@@ -108,7 +108,13 @@ struct ContainerDetailPanel: View {
                 case .logs:
                     LogsView(container: container)
                 case .inspect:
-                    InspectJSONView(container: container)
+                    RawJSONView(
+                        text: model.inspectText,
+                        emptyTitle: "No Inspect Data",
+                        emptyDescription: "Press Refresh to inspect this container."
+                    ) {
+                        await model.inspect(container)
+                    }
                 case .stats:
                     StatsView(container: container)
                 }

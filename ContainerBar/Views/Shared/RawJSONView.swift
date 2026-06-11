@@ -1,17 +1,24 @@
 import SwiftUI
 import AppKit
 
-/// Inspect tab: raw JSON/text in a monospaced scroll view with Refresh and Copy actions.
-struct InspectJSONView: View {
-    @Environment(ContainersViewModel.self) private var model
-    let container: ContainerSummary
+/// Monospaced, selectable raw-text pane with a Refresh + Copy toolbar row and
+/// an empty state. The caller owns the text and the refresh side effect.
+struct RawJSONView: View {
+    /// The text to display. When empty the empty-state placeholder is shown instead.
+    let text: String
+    /// Title shown in the empty-state placeholder.
+    var emptyTitle: String = "No Data"
+    /// Description shown below the empty-state title.
+    var emptyDescription: String = "Press Refresh to load."
+    /// Called when the user taps Refresh.
+    let onRefresh: () async -> Void
 
     var body: some View {
         VStack(spacing: 0) {
             // Toolbar row
             HStack {
                 Button {
-                    Task { await model.inspect(container) }
+                    Task { await onRefresh() }
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
@@ -19,12 +26,12 @@ struct InspectJSONView: View {
 
                 Button {
                     NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(model.inspectText, forType: .string)
+                    NSPasteboard.general.setString(text, forType: .string)
                 } label: {
                     Label("Copy", systemImage: "doc.on.doc")
                 }
                 .buttonStyle(.borderless)
-                .disabled(model.inspectText.isEmpty)
+                .disabled(text.isEmpty)
 
                 Spacer()
             }
@@ -34,15 +41,15 @@ struct InspectJSONView: View {
 
             Divider()
 
-            if model.inspectText.isEmpty {
+            if text.isEmpty {
                 EmptyStateView(
-                    title: "No Inspect Data",
+                    title: emptyTitle,
                     systemImage: "curlybraces",
-                    description: "Press Refresh to inspect this container."
+                    description: emptyDescription
                 )
             } else {
                 ScrollView([.horizontal, .vertical]) {
-                    Text(model.inspectText)
+                    Text(text)
                         .font(.system(.body, design: .monospaced))
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
