@@ -40,3 +40,37 @@ Other verified behaviors:
 - First run requires a kernel: `container system start` prompts to install one
   (non-interactive runs fail with "failed to read user input");
   `container system kernel set --recommended` installs it non-interactively.
+
+## Image fixtures (captured 2026-06-11, CLI 1.0.0)
+
+| File | Command | Notes |
+|---|---|---|
+| `image-list.json` | `container image list --format json` | two images: alpine:latest, postgres:latest |
+| `image-inspect.json` | `container image inspect alpine:latest` | array (single element); same shape as list element |
+
+`image-list.json` element shape (top-level keys: `id`, `configuration`, `variants`):
+
+- `id` — sha256 hex digest of the index manifest (no `sha256:` prefix)
+- `configuration.name` — fully-qualified ref, e.g. `docker.io/library/alpine:latest`
+- `configuration.creationDate` — ISO 8601 (`2026-06-09T20:11:09Z`)
+- `configuration.descriptor` — manifest descriptor object:
+  - `descriptor.size` — **manifest index size in bytes (~9 KB), NOT the image data size**.
+    Do not use this for storage reporting; the real on-disk weight is the sum of
+    `variants[].size`.
+  - `descriptor.digest` — sha256 digest of the manifest
+  - `descriptor.mediaType` — OCI media type string
+- `variants[]` — one entry per platform variant pulled locally:
+  - `variants[].size` — uncompressed layer sum for that variant (bytes); real image weight
+  - `variants[].platform.architecture` — e.g. `"arm64"`, `"amd64"`, `"arm"`, `"unknown"`
+  - `variants[].platform.os` — e.g. `"linux"`, `"unknown"`
+  - `variants[].platform.variant` — e.g. `"v8"`, `"v7"` (may be absent)
+  - `variants[].digest` — sha256 digest of the platform-specific manifest
+  - `variants[].config` — full OCI image config (skip — not decoded by the app)
+
+`image inspect` (no `--format` flag — the CLI does not support one): returns a
+pretty-printed JSON array with the **same element shape** as `image list --format json`.
+It takes name refs (`alpine:latest`), not digest IDs.
+
+Observed sizes for the alpine:latest fixture (1 variant):
+- `configuration.descriptor.size` = 9218 (manifest, ~9 KB — do NOT display this)
+- `variants[0].size` = 4203982 (arm64 layer data, ~4 MB — the real image size)

@@ -142,6 +142,12 @@ extension CLIContainerDTO {
             ports = joined.isEmpty ? nil : joined
         }
 
+        // imageReference: raw unstripped ref for in-use cross-referencing
+        let imageReference: String? = {
+            guard let ref = configuration?.image?.reference, !ref.isEmpty else { return nil }
+            return ref
+        }()
+
         return ContainerSummary(
             id: id,
             name: id,           // The CLI has no separate name field; id is the name
@@ -153,7 +159,8 @@ extension CLIContainerDTO {
             startedAt: startedAt,
             ports: ports,
             cpuText: nil,       // Filled from stats by the view model later
-            memoryText: nil     // Filled from stats by the view model later
+            memoryText: nil,    // Filled from stats by the view model later
+            imageReference: imageReference
         )
     }
 }
@@ -206,6 +213,106 @@ extension CLIStatsDTO {
     }
 }
 
+// MARK: - CLIImageDTO (mirrors Fixtures/image-list.json)
+// All fields are optional/lenient so unknown future keys don't break decoding.
+
+/// Represents one element of `container image list --format json`
+/// and `container image inspect <ref>`.
+struct CLIImageDTO: Decodable {
+    let id: String
+    let configuration: Configuration?
+    let variants: [Variant]?
+
+    struct Configuration: Decodable {
+        let name: String?
+        let creationDate: String?
+        // descriptor.size is the manifest size (~9 KB), NOT the image data size.
+        // We decode it for completeness but never surface it in the UI.
+        let descriptor: Descriptor?
+
+        struct Descriptor: Decodable {
+            let size: Int64?
+        }
+    }
+
+    struct Variant: Decodable {
+        let size: Int64?
+        let platform: Platform?
+        // config and digest are present in the real output but not used by the app.
+
+        struct Platform: Decodable {
+            let architecture: String?
+            let os: String?
+        }
+    }
+}
+
+// MARK: - Name/tag parsing helpers (shared by CLIImageDTO.toImageSummary())
+
+/// Splits a fully-qualified image reference into `(nameWithoutTag, tag)`.
+///
+/// The split point is the last `:` **after** the last `/`, so port numbers in
+/// registry hosts (`registry:5000/foo`) are not mangled:
+/// - `docker.io/library/alpine:latest` → `("docker.io/library/alpine", "latest")`
+/// - `registry:5000/foo`              → `("registry:5000/foo", nil)`
+/// - `registry:5000/app:v1`           → `("registry:5000/app", "v1")`
+private func splitReference(_ reference: String) -> (name: String, tag: String?) {
+    // Find the last path separator so we only look for `:` after it.
+    let lastSlashIdx = reference.lastIndex(of: "/") ?? reference.startIndex
+    let afterLastSlash = reference[lastSlashIdx...]
+    guard let colonIdx = afterLastSlash.lastIndex(of: ":") else {
+        return (reference, nil)
+    }
+    let name = String(reference[reference.startIndex..<colonIdx])
+    let tag  = String(reference[reference.index(after: colonIdx)...])
+    return (name, tag.isEmpty ? nil : tag)
+}
+
+/// Strips the `docker.io/library/` prefix for display, leaving other registries intact.
+private func strippedDisplayName(from nameWithoutTag: String) -> String {
+    let prefix = "docker.io/library/"
+    if nameWithoutTag.hasPrefix(prefix) {
+        return String(nameWithoutTag.dropFirst(prefix.count))
+    }
+    return nameWithoutTag
+}
+
+// MARK: - Mapping: CLIImageDTO → ImageSummary
+
+extension CLIImageDTO {
+    func toImageSummary() -> ImageSummary {
+        let reference = configuration?.name ?? id
+
+        let (nameWithoutTag, tag) = splitReference(reference)
+        let displayName = strippedDisplayName(from: nameWithoutTag)
+
+        let digestShort = String(id.prefix(12))
+
+        let createdAt: Date? = configuration?.creationDate
+            .flatMap(ISO8601DateFormatter.flexibleParse)
+
+        // sizeBytes is the sum of variant sizes; nil when variants are absent.
+        // NOTE: configuration.descriptor.size is the manifest size (~9 KB), not
+        // the image data size — never use that field for storage reporting.
+        let sizeBytes: Int64? = variants.map { vs in
+            vs.reduce(0) { $0 + ($1.size ?? 0) }
+        }
+
+        let architectures: [String] = (variants ?? []).compactMap { $0.platform?.architecture }
+
+        return ImageSummary(
+            id: id,
+            reference: reference,
+            displayName: displayName,
+            tag: tag,
+            digestShort: digestShort,
+            createdAt: createdAt,
+            sizeBytes: sizeBytes,
+            architectures: architectures
+        )
+    }
+}
+
 // MARK: - FlexibleContainerDecoder
 
 /// Decodes raw JSON strings produced by the `container` CLI into UI model types.
@@ -222,6 +329,23 @@ enum FlexibleContainerDecoder {
         do {
             let dtos = try JSONDecoder().decode([CLIContainerDTO].self, from: data)
             return dtos.map { $0.toContainerSummary() }
+        } catch is DecodingError {
+            let trimmed = json.trimmingCharacters(in: .whitespacesAndNewlines)
+            let preview = String(trimmed.prefix(200))
+            throw ContainerRuntimeError.decodingFailed(raw: preview)
+        }
+    }
+
+    /// Decodes `container image list --format json` (or `container image inspect`) output
+    /// into `ImageSummary` values.
+    static func decodeImages(from json: String) throws -> [ImageSummary] {
+        guard let data = json.data(using: .utf8) else {
+            let preview = String(json.prefix(200))
+            throw ContainerRuntimeError.decodingFailed(raw: preview)
+        }
+        do {
+            let dtos = try JSONDecoder().decode([CLIImageDTO].self, from: data)
+            return dtos.map { $0.toImageSummary() }
         } catch is DecodingError {
             let trimmed = json.trimmingCharacters(in: .whitespacesAndNewlines)
             let preview = String(trimmed.prefix(200))
