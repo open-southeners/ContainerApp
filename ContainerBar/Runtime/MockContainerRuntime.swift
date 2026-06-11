@@ -9,6 +9,17 @@ private actor MockStore {
     func list() -> [ContainerSummary] { containers }
     func listImages() -> [ImageSummary] { images }
 
+    func start(id: String) {
+        containers = containers.map { c in
+            guard c.id == id else { return c }
+            var m = c
+            m.state = .running
+            m.status = "Up Less than a second"
+            m.startedAt = Date()
+            return m
+        }
+    }
+
     func stop(id: String) {
         containers = containers.map { c in
             guard c.id == id else { return c }
@@ -354,6 +365,11 @@ final class MockContainerRuntime: ContainerRuntime {
             return Self.fakeStats.filter { $0.id == id }
         }
         return Self.fakeStats
+    }
+
+    func start(id: String) async throws {
+        try await Task.sleep(for: .milliseconds(200))
+        await store.start(id: id)
     }
 
     func stop(id: String) async throws {
