@@ -89,6 +89,84 @@ struct ContainerContentView: View {
                         }
                         .width(min: 80, ideal: 100)
                     }
+                    .contextMenu(forSelectionType: ContainerSummary.ID.self) { ids in
+                        if ids.count == 1,
+                           let id = ids.first,
+                           let container = model.filteredContainers.first(where: { $0.id == id }) {
+                            let isRunning = container.state == .running
+
+                            Button {
+                                model.selectedContainerID = id
+                                model.detailTab = .logs
+                            } label: {
+                                Label("Logs", systemImage: "doc.text")
+                            }
+
+                            Button {
+                                model.openShell(container)
+                            } label: {
+                                Label("Shell", systemImage: "terminal")
+                            }
+                            .disabled(!isRunning)
+
+                            Button {
+                                model.selectedContainerID = id
+                                model.detailTab = .inspect
+                                Task { await model.inspect(container) }
+                            } label: {
+                                Label("Inspect", systemImage: "magnifyingglass")
+                            }
+
+                            Divider()
+
+                            if isRunning {
+                                Button(role: .destructive) {
+                                    Task { await model.stop(container) }
+                                } label: {
+                                    Label("Stop", systemImage: "stop.circle")
+                                }
+                            } else {
+                                Button {
+                                    Task { await model.start(container) }
+                                } label: {
+                                    Label("Start", systemImage: "play.circle")
+                                }
+                            }
+
+                            Button(role: .destructive) {
+                                Task { await model.kill(container) }
+                            } label: {
+                                Label("Kill", systemImage: "bolt.circle")
+                            }
+                            .disabled(!isRunning)
+
+                            Button(role: .destructive) {
+                                Task { await model.delete(container) }
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        } else if ids.count > 1 {
+                            let containers = model.filteredContainers.filter { ids.contains($0.id) }
+                            let anyRunning = containers.contains { $0.state == .running }
+
+                            Button(role: .destructive) {
+                                for container in containers where container.state == .running {
+                                    Task { await model.kill(container) }
+                                }
+                            } label: {
+                                Label("Kill Selected", systemImage: "bolt.circle")
+                            }
+                            .disabled(!anyRunning)
+
+                            Button(role: .destructive) {
+                                for container in containers {
+                                    Task { await model.delete(container) }
+                                }
+                            } label: {
+                                Label("Delete Selected", systemImage: "trash")
+                            }
+                        }
+                    }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
