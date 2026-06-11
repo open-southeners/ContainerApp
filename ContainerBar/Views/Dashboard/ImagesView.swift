@@ -143,6 +143,7 @@ struct ImagesView: View {
             }
             .frame(minHeight: 220, idealHeight: 280)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .confirmationDialog(deleteDialogTitle, isPresented: isShowingDeleteConfirmation, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
                 if let image = imageToDelete {

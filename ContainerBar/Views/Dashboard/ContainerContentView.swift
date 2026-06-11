@@ -100,6 +100,7 @@ struct ContainerContentView: View {
             }
             .frame(minHeight: 220, idealHeight: 280)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: Helpers
