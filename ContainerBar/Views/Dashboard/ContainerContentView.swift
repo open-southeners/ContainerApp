@@ -79,10 +79,7 @@ struct ContainerContentView: View {
                         }
                         .width(min: 80, ideal: 100)
                     }
-                    // Size the table to its rows so it doesn't pad out a short
-                    // list with empty filler rows. Caps at `TableSizing.maxHeight`,
-                    // beyond which the table scrolls internally.
-                    .frame(maxHeight: TableSizing.height(rowCount: model.filteredContainers.count))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
 

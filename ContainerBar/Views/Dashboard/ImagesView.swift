@@ -103,10 +103,7 @@ struct ImagesView: View {
                         }
                         .width(min: 50, ideal: 60)
                     }
-                    // Size the table to its rows so it doesn't pad out a short
-                    // list with empty filler rows.  Caps at `TableSizing.maxHeight`,
-                    // beyond which the table scrolls internally.
-                    .frame(maxHeight: TableSizing.height(rowCount: model.images.count))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .contextMenu(forSelectionType: String.self) { ids in
                         if let id = ids.first, let image = model.images.first(where: { $0.id == id }) {
                             Button("Inspect") {
