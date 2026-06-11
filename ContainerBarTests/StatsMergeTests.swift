@@ -221,6 +221,7 @@ final class TrackedMockRuntime: ContainerRuntime, @unchecked Sendable {
     func inspect(id: String) async throws -> String { "{}" }
     func logs(id: String, lines: Int) async throws -> String { "" }
     func stats(id: String?) async throws -> [ContainerStats] { stubbedStats }
+    func start(id: String) async throws {}
     func stop(id: String) async throws {}
     func kill(id: String) async throws {}
     func delete(id: String) async throws {}
