@@ -4,8 +4,10 @@ import Foundation
 
 private actor MockStore {
     var containers: [ContainerSummary] = MockContainerRuntime.seedContainers
+    var images: [ImageSummary] = MockContainerRuntime.seedImages
 
     func list() -> [ContainerSummary] { containers }
+    func listImages() -> [ImageSummary] { images }
 
     func stop(id: String) {
         containers = containers.map { c in
@@ -38,6 +40,28 @@ private actor MockStore {
     func prune() {
         containers.removeAll { $0.state != .running }
     }
+
+    func deleteImage(reference: String) {
+        images.removeAll { $0.reference == reference }
+    }
+
+    /// Removes only images not referenced by any container and returns a plausible
+    /// "Reclaimed … in disk space" summary string.
+    func pruneImages(containerRefs: Set<String>) -> String {
+        var reclaimedBytes: Int64 = 0
+        images.removeAll { image in
+            guard !containerRefs.contains(image.reference) else { return false }
+            reclaimedBytes += image.sizeBytes ?? 0
+            return true
+        }
+        if reclaimedBytes == 0 {
+            return "Reclaimed Zero KB in disk space"
+        }
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .binary
+        let formatted = formatter.string(fromByteCount: reclaimedBytes)
+        return "Reclaimed \(formatted) in disk space"
+    }
 }
 
 // MARK: - Mock runtime
@@ -63,7 +87,8 @@ final class MockContainerRuntime: ContainerRuntime {
                 startedAt: cal.date(byAdding: .hour, value: -3, to: now),
                 ports: "0.0.0.0:8080->80/tcp",
                 cpuText: "0.4%",
-                memoryText: "24.3 MB"
+                memoryText: "24.3 MB",
+                imageReference: "docker.io/library/nginx:latest"
             ),
             ContainerSummary(
                 id: "b2c3d4e5f6a1",
@@ -76,7 +101,8 @@ final class MockContainerRuntime: ContainerRuntime {
                 startedAt: cal.date(byAdding: .hour, value: -3, to: now),
                 ports: "0.0.0.0:5432->5432/tcp",
                 cpuText: "1.2%",
-                memoryText: "512.0 MB"
+                memoryText: "512.0 MB",
+                imageReference: "docker.io/library/postgres:17"
             ),
             ContainerSummary(
                 id: "c3d4e5f6a1b2",
@@ -89,7 +115,8 @@ final class MockContainerRuntime: ContainerRuntime {
                 startedAt: cal.date(byAdding: .hour, value: -2, to: now),
                 ports: "0.0.0.0:6379->6379/tcp",
                 cpuText: "0.1%",
-                memoryText: "8.7 MB"
+                memoryText: "8.7 MB",
+                imageReference: "docker.io/library/redis:7"
             ),
             ContainerSummary(
                 id: "d4e5f6a1b2c3",
@@ -102,7 +129,8 @@ final class MockContainerRuntime: ContainerRuntime {
                 startedAt: cal.date(byAdding: .minute, value: -90, to: now),
                 ports: nil,
                 cpuText: nil,
-                memoryText: nil
+                memoryText: nil,
+                imageReference: "docker.io/library/alpine:3"
             ),
             ContainerSummary(
                 id: "e5f6a1b2c3d4",
@@ -115,7 +143,82 @@ final class MockContainerRuntime: ContainerRuntime {
                 startedAt: cal.date(byAdding: .day, value: -2, to: now),
                 ports: nil,
                 cpuText: nil,
-                memoryText: nil
+                memoryText: nil,
+                imageReference: "docker.io/library/busybox:latest"
+            ),
+        ]
+    }()
+
+    /// Seed images — one per distinct container image reference, plus one unused image
+    /// so the future In-Use column shows both states.
+    ///
+    /// `isInUse` is `false` in the seeds; the view model computes it later by
+    /// cross-referencing against the container list.
+    fileprivate static let seedImages: [ImageSummary] = {
+        let now = Date()
+        let cal = Calendar.current
+        return [
+            ImageSummary(
+                id: "a3ed12f5bc10d8f4e6a2c9b7e5d3f1a0b2c4e6d8f0a2b4c6e8d0f2a4b6c8e0",
+                reference: "docker.io/library/nginx:latest",
+                displayName: "nginx",
+                tag: "latest",
+                digestShort: "a3ed12f5bc10",
+                createdAt: cal.date(byAdding: .day, value: -5, to: now),
+                sizeBytes: 71_800_000,
+                architectures: ["arm64"]
+            ),
+            ImageSummary(
+                id: "b4fe23a6cd21e9f5f7b3d0c8f6e4a2b1c3d5e7f9b1c3e5a7c9e1b3d5f7a9c1",
+                reference: "docker.io/library/postgres:17",
+                displayName: "postgres",
+                tag: "17",
+                digestShort: "b4fe23a6cd21",
+                createdAt: cal.date(byAdding: .day, value: -10, to: now),
+                sizeBytes: 432_000_000,
+                architectures: ["arm64"]
+            ),
+            ImageSummary(
+                id: "c5af34b7de32f0a6a8c4e1d9a7f5b3c2d4f6a8b0c2d4f6a8b0c2d4f6a8b0c2",
+                reference: "docker.io/library/redis:7",
+                displayName: "redis",
+                tag: "7",
+                digestShort: "c5af34b7de32",
+                createdAt: cal.date(byAdding: .day, value: -7, to: now),
+                sizeBytes: 117_000_000,
+                architectures: ["arm64"]
+            ),
+            ImageSummary(
+                id: "d6b045c8ef43a1b7b9d5f2e0b8a6c4d3e5a7c9e1b3d5f7a9c1e3a5b7d9f1a3",
+                reference: "docker.io/library/alpine:3",
+                displayName: "alpine",
+                tag: "3",
+                digestShort: "d6b045c8ef43",
+                createdAt: cal.date(byAdding: .day, value: -14, to: now),
+                sizeBytes: 3_800_000,
+                architectures: ["arm64"]
+            ),
+            ImageSummary(
+                id: "e7c156d9f054b2c8c0e6a3f1c9b7d5e4f6b8d0f2c4e6b8d0f2c4e6b8d0f2c4",
+                reference: "docker.io/library/busybox:latest",
+                displayName: "busybox",
+                tag: "latest",
+                digestShort: "e7c156d9f054",
+                createdAt: cal.date(byAdding: .day, value: -30, to: now),
+                sizeBytes: 2_100_000,
+                architectures: ["arm64"]
+            ),
+            // One unused image — no container references this ref;
+            // allows the future In-Use column to show both states.
+            ImageSummary(
+                id: "f8d267e0a165c3d9d1f7b4a2d0c8e6f5a7b9e1c3a5d7b9e1c3a5d7b9e1c3a5",
+                reference: "docker.io/library/ubuntu:24.04",
+                displayName: "ubuntu",
+                tag: "24.04",
+                digestShort: "f8d267e0a165",
+                createdAt: cal.date(byAdding: .day, value: -60, to: now),
+                sizeBytes: 29_900_000,
+                architectures: ["arm64"]
             ),
         ]
     }()
@@ -168,6 +271,21 @@ final class MockContainerRuntime: ContainerRuntime {
             "State": container.state.rawValue,
             "Status": container.status ?? "",
             "Command": container.command ?? "",
+        ]
+        let data = (try? encoder.encode(payload)) ?? Data()
+        return String(data: data, encoding: .utf8) ?? "{}"
+    }
+
+    private static func fakeImageInspect(for image: ImageSummary) -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let payload: [String: String] = [
+            "id": image.id,
+            "reference": image.reference,
+            "displayName": image.displayName,
+            "tag": image.tag ?? "",
+            "digestShort": image.digestShort,
+            "sizeBytes": image.sizeBytes.map { String($0) } ?? "0",
         ]
         let data = (try? encoder.encode(payload)) ?? Data()
         return String(data: data, encoding: .utf8) ?? "{}"
@@ -272,5 +390,37 @@ final class MockContainerRuntime: ContainerRuntime {
         try await Task.sleep(for: .milliseconds(200))
         return .running
     }
-}
 
+    // MARK: - Image management
+
+    func listImages() async throws -> [ImageSummary] {
+        try await Task.sleep(for: .milliseconds(200))
+        return await store.listImages()
+    }
+
+    /// Returns a small pretty-printed JSON blob for the given reference.
+    /// Throws `.notFound(id:)` for unknown references, matching the real CLI behaviour.
+    func inspectImage(reference: String) async throws -> String {
+        try await Task.sleep(for: .milliseconds(200))
+        let images = await store.listImages()
+        guard let image = images.first(where: { $0.reference == reference }) else {
+            throw ContainerRuntimeError.notFound(id: reference)
+        }
+        return Self.fakeImageInspect(for: image)
+    }
+
+    /// Removes the image matching `reference` from the in-memory store.
+    func deleteImage(reference: String) async throws {
+        try await Task.sleep(for: .milliseconds(200))
+        await store.deleteImage(reference: reference)
+    }
+
+    /// Removes only images not referenced by any container and returns a plausible
+    /// "Reclaimed … in disk space" summary string.
+    func pruneImages() async throws -> String {
+        try await Task.sleep(for: .milliseconds(200))
+        let containers = await store.list()
+        let containerRefs = Set(containers.compactMap { $0.imageReference })
+        return await store.pruneImages(containerRefs: containerRefs)
+    }
+}

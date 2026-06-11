@@ -13,4 +13,17 @@ protocol ContainerRuntime: Sendable {
     func startSystem() async throws
     func stopSystem() async throws
     func systemStatus() async throws -> ContainerSystemStatus
+
+    // MARK: - Image management
+
+    /// `container image list --format json` decoded into `ImageSummary` values.
+    func listImages() async throws -> [ImageSummary]
+    /// `container image inspect <reference>` — returns the raw pretty-printed JSON string.
+    /// Throws `.notFound(id:)` when the reference is unknown to the runtime.
+    func inspectImage(reference: String) async throws -> String
+    /// `container image delete <reference>` — removes the image from the local store.
+    func deleteImage(reference: String) async throws
+    /// `container image prune` — removes dangling images and returns the CLI summary line
+    /// (e.g. `"Reclaimed Zero KB in disk space"`).
+    func pruneImages() async throws -> String
 }

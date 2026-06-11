@@ -279,6 +279,41 @@ final class ContainerCLIRuntime: ContainerRuntime {
         try await runChecked(["system", "stop"])
     }
 
+    // MARK: - Image management
+
+    /// `container image list --format json` decoded via `FlexibleContainerDecoder`.
+    func listImages() async throws -> [ImageSummary] {
+        let result = try await runChecked(["image", "list", "--format", "json"])
+        return try FlexibleContainerDecoder.decodeImages(from: result.stdout)
+    }
+
+    /// `container image inspect <reference>` — returns the raw stdout string.
+    ///
+    /// The CLI prints pretty-printed JSON by default; there is no `--format` flag
+    /// for this subcommand.  The existing "not found" mapping in `runChecked` gives
+    /// `.notFound(id:)` for free when the reference is unknown.
+    func inspectImage(reference: String) async throws -> String {
+        let result = try await runChecked(["image", "inspect", reference], id: reference)
+        return result.stdout
+    }
+
+    /// `container image delete <reference>` — removes the image from the local store.
+    ///
+    /// No `--force` flag is passed: if the CLI refuses (e.g. the image is in use),
+    /// the stderr flows through `.commandFailed` into the existing error banner.
+    func deleteImage(reference: String) async throws {
+        try await runChecked(["image", "delete", reference], id: reference)
+    }
+
+    /// `container image prune` — removes dangling images.
+    ///
+    /// Returns the trimmed stdout summary line from the CLI, e.g.
+    /// `"Reclaimed Zero KB in disk space"`.
+    func pruneImages() async throws -> String {
+        let result = try await runChecked(["image", "prune"])
+        return result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     /// `container system status`
     ///
     /// This method does NOT use `runChecked` so that a non-running system is

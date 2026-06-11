@@ -145,6 +145,34 @@ struct ContainerCLIRuntimeIntegrationTests {
         #expect(!stillPresent, "Container '\(name)' should be gone after prune")
     }
 
+    // MARK: - Test: Image list + inspect (read-only)
+
+    /// Verifies that `listImages()` decodes without throwing and, when at least
+    /// one image is present, that `inspectImage(reference:)` on the first element
+    /// returns a non-empty string that contains that reference (or at least valid JSON).
+    ///
+    /// Destructive image operations (delete, prune) are intentionally **not** tested
+    /// to avoid mutating the developer's real image store.
+    @Test("listImages decodes without throwing; inspectImage returns non-empty JSON", .timeLimit(.minutes(1)))
+    func imageListAndInspect() async throws {
+        // --- 1. listImages() decodes without throwing ---
+        let images = try await runtime.listImages()
+        // A clean system may have zero images — that is still a valid decode.
+        _ = images  // silence "result unused" warning
+
+        // --- 2. inspectImage on the first element (when at least one image exists) ---
+        if let first = images.first {
+            let json = try await runtime.inspectImage(reference: first.reference)
+            #expect(!json.isEmpty,
+                    "inspectImage should return a non-empty string for '\(first.reference)'")
+            // The raw JSON must at least contain the reference string we passed in,
+            // or a well-known JSON marker confirming it is structured output.
+            let looksLikeJSON = json.contains("{") && json.contains("}")
+            #expect(looksLikeJSON,
+                    "inspectImage output should look like JSON (contain '{' and '}') for '\(first.reference)'")
+        }
+    }
+
     // MARK: - Test 2: Kill + delete
 
     /// Creates a second scratch container, kills it (SIGKILL), verifies it is

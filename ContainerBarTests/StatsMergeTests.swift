@@ -228,4 +228,8 @@ final class TrackedMockRuntime: ContainerRuntime, @unchecked Sendable {
     func startSystem() async throws {}
     func stopSystem() async throws {}
     func systemStatus() async throws -> ContainerSystemStatus { .running }
+    func listImages() async throws -> [ImageSummary] { [] }
+    func inspectImage(reference: String) async throws -> String { "{}" }
+    func deleteImage(reference: String) async throws {}
+    func pruneImages() async throws -> String { "Reclaimed Zero KB in disk space" }
 }
