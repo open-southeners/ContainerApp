@@ -7,6 +7,12 @@ struct ContainerDetailPanel: View {
     @Environment(ContainersViewModel.self) private var model
     let container: ContainerSummary
 
+    /// Shell/Stop/Kill only make sense for a running container; otherwise the
+    /// primary action is Start.
+    private var isRunning: Bool {
+        container.state == .running
+    }
+
     var body: some View {
         @Bindable var model = model
         VStack(spacing: 0) {
@@ -34,8 +40,8 @@ struct ContainerDetailPanel: View {
 
                 // Action buttons
                 Button {
+                    // LogsView's `.task` auto-loads and polls once the tab is shown.
                     model.detailTab = .logs
-                    Task { await model.loadLogs(container) }
                 } label: {
                     Label("Logs", systemImage: "doc.text")
                 }
@@ -47,6 +53,7 @@ struct ContainerDetailPanel: View {
                     Label("Shell", systemImage: "terminal")
                 }
                 .buttonStyle(.borderless)
+                .disabled(!isRunning)
 
                 Button {
                     model.detailTab = .inspect
@@ -59,13 +66,23 @@ struct ContainerDetailPanel: View {
                 Divider()
                     .frame(height: 20)
 
-                Button(role: .destructive) {
-                    Task { await model.stop(container) }
-                } label: {
-                    Label("Stop", systemImage: "stop.circle")
+                if isRunning {
+                    Button(role: .destructive) {
+                        Task { await model.stop(container) }
+                    } label: {
+                        Label("Stop", systemImage: "stop.circle")
+                    }
+                    .buttonStyle(.borderless)
+                    .tint(.orange)
+                } else {
+                    Button {
+                        Task { await model.start(container) }
+                    } label: {
+                        Label("Start", systemImage: "play.circle")
+                    }
+                    .buttonStyle(.borderless)
+                    .tint(.green)
                 }
-                .buttonStyle(.borderless)
-                .tint(.orange)
 
                 Button(role: .destructive) {
                     Task { await model.kill(container) }
@@ -73,6 +90,7 @@ struct ContainerDetailPanel: View {
                     Label("Kill", systemImage: "bolt.circle")
                 }
                 .buttonStyle(.borderless)
+                .disabled(!isRunning)
 
                 Button(role: .destructive) {
                     Task { await model.delete(container) }
