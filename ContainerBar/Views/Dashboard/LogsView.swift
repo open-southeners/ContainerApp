@@ -38,7 +38,7 @@ struct LogsView: View {
                 EmptyStateView(
                     title: "No Logs",
                     systemImage: "doc.text",
-                    description: "Press Refresh to load logs for this container."
+                    description: "This container hasn't produced any log output."
                 )
             } else {
                 ScrollView([.horizontal, .vertical]) {
@@ -48,6 +48,17 @@ struct LogsView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(8)
                 }
+            }
+        }
+        // Load immediately, then keep polling while the tab is visible. Keyed on
+        // the container id so switching containers cancels the old poll and loads
+        // the new container's logs right away; leaving the tab cancels outright.
+        .task(id: container.id) {
+            await model.loadLogs(container)
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                guard !Task.isCancelled else { return }
+                await model.loadLogs(container, quiet: true)
             }
         }
     }
