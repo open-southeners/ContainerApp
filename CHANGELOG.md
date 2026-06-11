@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-06-11
+
+### Added
+
+- Images section in the dashboard sidebar: sortable table with Name, Architecture, Size, and In-Use columns; per-image detail panel with raw JSON inspect; individual delete and Prune Images (dangling only) actions. Size is summed across `variants[]` — manifest descriptor size is excluded.
+- In-use detection for images: cross-references running containers' `imageReference` field against the fully-qualified image name.
+- `Start` container action added to the detail panel header, menu bar row, and context menu — shown in place of Stop for stopped containers; Kill and Shell remain disabled when the container is not running.
+- Right-click context menu on container table rows. Single-row: Logs, Shell (disabled when stopped), Inspect, divider, Start/Stop (state-dependent), Kill (disabled when stopped), Delete. Multi-row: Kill Selected (disabled when none are running), Delete Selected.
+- Automatic log polling in the Logs detail tab: loads on tab activation and refreshes every 2 s in quiet mode (no loading indicator). Cancels and clears when the selected container changes.
+- App icon and custom menu bar icon (vector PDF); falls back to a correctly sized SF Symbol template image when the custom asset is unavailable.
+- Hover highlight on menu bar container rows using the system selection colour.
+- App window activation when opening a container from the menu bar.
+- Reusable build workflow in CI; compiled `.app` artifact attached to each release.
+- MIT license and Apple `container` runtime acknowledgement.
+
+### Fixed
+
+- Dashboard split panes now fill the full available width via `GeometryReader`; previously floated narrow when no container was selected.
+- Name and Image columns in the container and image tables stretch to absorb remaining horizontal space.
+- Raw JSON in Inspect tabs rendered via `NSTextView` (via `SelectableMonospacedTextView`) to handle large payloads that caused SwiftUI layout freezes.
+- Menu bar icon rendered at the correct point size as a template image; no longer oversized or missing colour inversion in dark menu bars.
+
+### Changed
+
+- Stale logs and inspect text are cleared immediately when the selected container changes, preventing a flash of the previous container's data.
+- `SystemStatusGate`, `RawJSONView`, and table-sizing logic extracted into shared components reused across the Containers and Images sections.
+
 ## [1.0.0] - 2026-06-11
 
 ### Added
