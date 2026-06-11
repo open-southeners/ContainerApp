@@ -105,6 +105,7 @@ struct MenuBarContainerView: View {
                         .menuRowLabel()
                 }
                 .buttonStyle(.plain)
+                .menuRowHover()
 
                 // Start / Stop system depending on current status.
                 // The "Start System" button is suppressed here when the system
@@ -120,6 +121,7 @@ struct MenuBarContainerView: View {
                             .menuRowLabel()
                     }
                     .buttonStyle(.plain)
+                    .menuRowHover()
                 } else if model.systemStatus != .stopped {
                     Button {
                         Task {
@@ -130,16 +132,19 @@ struct MenuBarContainerView: View {
                             .menuRowLabel()
                     }
                     .buttonStyle(.plain)
+                    .menuRowHover()
                 }
 
-                // Show More button — opens the full dashboard window
+                // Show More button — opens the full dashboard window, focusing it if already open
                 Button {
+                    NSApp.activate(ignoringOtherApps: true)
                     openWindow(id: "containers-window")
                 } label: {
                     Label("Show More\u{2026}", systemImage: "rectangle.expand.diagonal")
                         .menuRowLabel()
                 }
                 .buttonStyle(.plain)
+                .menuRowHover()
 
                 Divider()
                     .padding(.vertical, 4)
@@ -153,6 +158,7 @@ struct MenuBarContainerView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.red)
+                .menuRowHover()
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -195,6 +201,27 @@ private extension View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 5)
             .contentShape(Rectangle())
+    }
+
+    /// Adds a menu-style hover highlight background to a footer button.
+    func menuRowHover() -> some View {
+        modifier(MenuRowHoverModifier())
+    }
+}
+
+/// Provides a rounded highlight on hover using the system menu-item selection color,
+/// matching the appearance of native macOS top-bar menu rows.
+private struct MenuRowHoverModifier: ViewModifier {
+    @State private var isHovered = false
+
+    func body(content: Content) -> some View {
+        content
+            .background(
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(isHovered ? Color(NSColor.controlAccentColor).opacity(0.2) : Color.clear)
+                    .padding(.horizontal, -4)
+            )
+            .onHover { isHovered = $0 }
     }
 }
 
