@@ -34,10 +34,8 @@ struct MenuBarContainerRow: View {
                 Button {
                     model.select(container)
                     model.detailTab = .logs
+                    NSApp.activate(ignoringOtherApps: true)
                     openWindow(id: "containers-window")
-                    Task {
-                        await model.loadLogs(container)
-                    }
                 } label: {
                     Image(systemName: "doc.text")
                 }
@@ -51,18 +49,31 @@ struct MenuBarContainerRow: View {
                 }
                 .buttonStyle(.borderless)
                 .help("Open Shell")
-
-                Button(role: .destructive) {
-                    Task {
-                        await model.stop(container)
-                    }
-                } label: {
-                    Image(systemName: "stop.circle")
-                }
-                .buttonStyle(.borderless)
-                .help("Stop Container")
-                .foregroundStyle(.red)
                 .disabled(container.state != .running)
+
+                if container.state == .running {
+                    Button(role: .destructive) {
+                        Task {
+                            await model.stop(container)
+                        }
+                    } label: {
+                        Image(systemName: "stop.circle")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Stop Container")
+                    .foregroundStyle(.red)
+                } else {
+                    Button {
+                        Task {
+                            await model.start(container)
+                        }
+                    } label: {
+                        Image(systemName: "play.circle")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Start Container")
+                    .foregroundStyle(.green)
+                }
             }
         }
         .padding(.vertical, 2)
