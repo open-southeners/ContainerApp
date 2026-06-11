@@ -20,6 +20,10 @@ Discovered during orchestrated work; not blocking, not yet fixed.
   **What:** Standalone stats refresh doesn't re-run `markInUse`, so image in-use flags could lag container changes if `refreshStats()` were ever used for that. Currently harmless — it's only called for stats and doesn't structurally change `containers`.
   **Fix:** Either fold `refreshStats()` into `refresh(quiet: true)` or append `images = Self.markInUse(images, containers: containers)` at its end.
 
+- **Where:** `ContainerBar/Views/Dashboard/LogsView.swift` (~line 44, two-axis `ScrollView` around a single `Text`)
+  **What:** Same Core Animation texture-limit bug that blanked the Raw JSON tab (fixed there via `SelectableMonospacedTextView`): the whole log text draws as one layer, which silently fails past ~16,384 px. Low urgency — logs are capped at 100 lines today — but a chatty container with very long lines could still trigger it.
+  **Fix:** Swap the `ScrollView([.horizontal, .vertical]) { Text(...) }` for `SelectableMonospacedTextView(text:)` like `RawJSONView` now does.
+
 - **Where:** Images section (Phase 5), deferred scope
   **What:** Not implemented by design: `image pull`/`push`/`tag`/`save`/`load` UI, `prune --all` (UI prunes dangling only), and visibility of dangling images (the list shows only what `image list` returns). The new `ImagesView`/`ImageDetailPanel` have no snapshot/UI test coverage (decoder, in-use, and runtime layers are tested).
   **Fix:** See "Open questions / future ideas" in `plans/phase-5-images.md` when picking these up.

@@ -48,13 +48,7 @@ struct RawJSONView: View {
                     description: emptyDescription
                 )
             } else {
-                ScrollView([.horizontal, .vertical]) {
-                    Text(text)
-                        .font(.system(.body, design: .monospaced))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(8)
-                }
+                SelectableMonospacedTextView(text: text)
             }
         }
     }
