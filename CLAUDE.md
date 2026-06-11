@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ContainerBar is a native macOS SwiftUI menu-bar app + dashboard window that wraps Apple's
 `container` CLI (1.0.0+). It lists/inspects/controls containers by shelling out to the CLI —
-there is no daemon or library binding. Requires macOS 15+ (the runtime requirement); App Sandbox
+there is no daemon or library binding. Requires macOS 26+ (Apple's `container` runtime requirement); App Sandbox
 is **off** because the app must spawn the CLI and reach its XPC apiserver, so distribution is
 Developer ID, not Mac App Store.
 
