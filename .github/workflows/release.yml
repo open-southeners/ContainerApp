@@ -37,8 +37,7 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${REF_NAME}"
-          # Strip leading 'v'
-          VERSION="${TAG#v}"
+          VERSION="${TAG}"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           # Mark as prerelease if the version contains a hyphen (e.g. v1.2.3-beta.1)
