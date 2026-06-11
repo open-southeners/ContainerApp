@@ -25,6 +25,7 @@ targets:
         DEVELOPMENT_TEAM: ""
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
   ContainerBarTests:
     type: bundle.unit-test

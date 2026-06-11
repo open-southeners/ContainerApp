@@ -11,7 +11,7 @@ struct ContainerBarApp: App {
             MenuBarContainerView()
                 .environment(model)
         } label: {
-            Image(systemName: "shippingbox")
+            Image("TopBarIcon")
         }
         .menuBarExtraStyle(.window)
 
