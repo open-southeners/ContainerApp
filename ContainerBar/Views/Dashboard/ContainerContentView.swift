@@ -28,6 +28,13 @@ struct ContainerContentView: View {
     @ViewBuilder
     private func containerListContent(model: ContainersViewModel) -> some View {
         @Bindable var model = model
+        // GeometryReader is required here because VSplitView (NSSplitView-backed) sizes
+        // itself to the measured fitting/ideal width of its pane content rather than
+        // honouring an offered width.  Wrapping with `.frame(maxWidth: .infinity)` merely
+        // centres the narrow split view; passing the explicit geometry size forces it to
+        // actually fill the available space.  Do NOT replace with maxWidth: .infinity —
+        // that regresses to the narrow layout when nothing is selected in the bottom pane.
+        GeometryReader { geometry in
         VSplitView {
             // Top pane: error banner + table
             VStack(spacing: 0) {
@@ -98,9 +105,10 @@ struct ContainerContentView: View {
                     )
                 }
             }
-            .frame(minHeight: 220, idealHeight: 280)
+            .frame(maxWidth: .infinity, minHeight: 220, idealHeight: 280)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(width: geometry.size.width, height: geometry.size.height)
+        } // GeometryReader
     }
 
     // MARK: Helpers
