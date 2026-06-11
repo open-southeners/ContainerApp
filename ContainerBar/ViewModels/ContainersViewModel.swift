@@ -54,7 +54,17 @@ enum ContainerDetailTab: String, CaseIterable, Hashable {
 final class ContainersViewModel {
     var containers: [ContainerSummary] = []
     var stats: [ContainerStats] = []
-    var selectedContainerID: String?
+    var selectedContainerID: String? {
+        didSet {
+            // Clear stale per-container text whenever the selection changes so the
+            // detail panel never shows logs/inspect JSON from the previously-selected
+            // container (same pattern as `selectedImageID`).
+            if selectedContainerID != oldValue {
+                logsText = ""
+                inspectText = ""
+            }
+        }
+    }
     var sidebarSelection: SidebarSection? = .all
     var detailTab: ContainerDetailTab = .overview
     var logsText: String = ""
@@ -349,12 +359,22 @@ final class ContainersViewModel {
         errorMessage = error.localizedDescription
     }
 
-    func loadLogs(_ container: ContainerSummary) async {
+    /// Loads the last 100 log lines for `container` into `logsText`.
+    /// - Parameter quiet: when `true` (background polling), failures keep the
+    ///   current text and never touch `errorMessage`, so a transient CLI hiccup
+    ///   doesn't raise the error banner every poll cycle.
+    func loadLogs(_ container: ContainerSummary, quiet: Bool = false) async {
         do {
-            logsText = try await runtime.logs(id: container.id, lines: 100)
-            errorMessage = nil
+            let text = try await runtime.logs(id: container.id, lines: 100)
+            // The owning `.task(id:)` is cancelled when the selection changes;
+            // drop a late result so it can't overwrite the new container's logs.
+            guard !Task.isCancelled else { return }
+            logsText = text
+            if !quiet { errorMessage = nil }
+        } catch is CancellationError {
+            // Selection changed mid-load — nothing to report.
         } catch {
-            errorMessage = error.localizedDescription
+            if !quiet { errorMessage = error.localizedDescription }
         }
     }
 
@@ -364,6 +384,16 @@ final class ContainersViewModel {
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    func start(_ container: ContainerSummary) async {
+        do {
+            try await runtime.start(id: container.id)
+            errorMessage = nil
+            await refresh()
+        } catch {
+            handle(error)
         }
     }
 
