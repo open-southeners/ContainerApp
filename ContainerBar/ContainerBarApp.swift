@@ -6,12 +6,22 @@ import SwiftUI
 struct ContainerBarApp: App {
     @State private var model = ContainersViewModel(runtime: ContainerCLIRuntime())
 
+    @MainActor
+    private var menuBarIcon: Image {
+        if let nsImage = NSImage(named: "TopBarIcon") {
+            nsImage.isTemplate = true
+            nsImage.size = NSSize(width: 18, height: 18)
+            return Image(nsImage: nsImage)
+        }
+        return Image(systemName: "shippingbox")
+    }
+
     var body: some Scene {
         MenuBarExtra {
             MenuBarContainerView()
                 .environment(model)
         } label: {
-            Image("TopBarIcon")
+            menuBarIcon
         }
         .menuBarExtraStyle(.window)
 
