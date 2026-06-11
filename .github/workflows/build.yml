@@ -1,0 +1,91 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "plans/**"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+      - "plans/**"
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: false
+        default: ""
+    outputs:
+      artifact-name:
+        value: ${{ jobs.build.outputs.artifact-name }}
+
+jobs:
+  build:
+    name: Build
+    runs-on: macos-26
+
+    outputs:
+      artifact-name: ${{ steps.package.outputs.artifact-name }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26'
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Test
+        run: |
+          xcodebuild \
+            -scheme ContainerBar \
+            -destination 'platform=macOS,arch=arm64' \
+            test
+
+      - name: Archive
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -scheme ContainerBar \
+            -configuration Release \
+            -archivePath build/ContainerBar.xcarchive \
+            -destination 'generic/platform=macOS' \
+            ${VERSION:+MARKETING_VERSION="${VERSION}"} \
+            archive
+
+      - name: Package .app into zip
+        id: package
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          APP_PATH="build/ContainerBar.xcarchive/Products/Applications/ContainerBar.app"
+          if [ ! -d "${APP_PATH}" ]; then
+            echo "::error::Archived app not found at ${APP_PATH}"
+            ls -la build/ContainerBar.xcarchive/Products/Applications/ || true
+            exit 1
+          fi
+          ZIP_NAME="ContainerBar${VERSION:+-${VERSION}}.zip"
+          ditto -c -k --keepParent "${APP_PATH}" "${ZIP_NAME}"
+          ARTIFACT_NAME="ContainerBar-app${VERSION:+-${VERSION}}"
+          echo "zip-name=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
+          echo "artifact-name=${ARTIFACT_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.artifact-name }}
+          path: ${{ steps.package.outputs.zip-name }}
+          if-no-files-found: error

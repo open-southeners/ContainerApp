@@ -10,25 +10,15 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    name: Build and Release
-    runs-on: macos-15
+  version:
+    name: Determine version
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: latest-stable
-
-      - name: Install XcodeGen
-        run: brew install xcodegen
-
-      - name: Generate Xcode project
-        run: xcodegen generate
-
       - name: Determine version
         id: version
         shell: bash
@@ -47,51 +37,42 @@ jobs:
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Archive
-        shell: bash
-        env:
-          MARKETING_VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          set -euo pipefail
-          xcodebuild \
-            -scheme ContainerBar \
-            -configuration Release \
-            -archivePath build/ContainerBar.xcarchive \
-            -destination 'generic/platform=macOS' \
-            MARKETING_VERSION="${MARKETING_VERSION}" \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            archive
+  build:
+    name: Build
+    needs: version
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
 
-      - name: Package .app into zip
-        shell: bash
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          set -euo pipefail
-          APP_PATH="build/ContainerBar.xcarchive/Products/Applications/ContainerBar.app"
-          if [ ! -d "${APP_PATH}" ]; then
-            echo "::error::Archived app not found at ${APP_PATH}"
-            ls -la build/ContainerBar.xcarchive/Products/Applications/ || true
-            exit 1
-          fi
-          ZIP_NAME="ContainerBar-${VERSION}.zip"
-          ditto -c -k --keepParent "${APP_PATH}" "${ZIP_NAME}"
-          echo "ZIP_NAME=${ZIP_NAME}" >> "$GITHUB_ENV"
+  release:
+    name: Create GitHub Release
+    needs: [version, build]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build.outputs.artifact-name }}
 
       - name: Extract CHANGELOG notes
         id: changelog
         uses: release-flow/keep-a-changelog-action@v3
         with:
           command: query
-          version: ${{ steps.version.outputs.version }}
+          version: ${{ needs.version.outputs.version }}
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: ${{ steps.version.outputs.tag }}
+          tag_name: ${{ needs.version.outputs.tag }}
+          name: ${{ needs.version.outputs.tag }}
           body: ${{ steps.changelog.outputs.release-notes }}
-          prerelease: ${{ steps.version.outputs.prerelease == 'true' }}
-          make_latest: ${{ steps.version.outputs.prerelease == 'false' }}
-          files: ${{ env.ZIP_NAME }}
+          prerelease: ${{ needs.version.outputs.prerelease == 'true' }}
+          make_latest: ${{ needs.version.outputs.prerelease == 'false' }}
+          files: ContainerBar-${{ needs.version.outputs.version }}.zip
