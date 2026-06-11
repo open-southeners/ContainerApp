@@ -63,6 +63,26 @@ final class ContainersViewModel {
     var isLoading: Bool = false
     var errorMessage: String?
 
+    // MARK: Image state
+
+    /// All locally-available images, refreshed alongside containers.
+    var images: [ImageSummary] = []
+    /// The id of the currently-selected image row, driving the detail panel.
+    var selectedImageID: String? {
+        didSet {
+            // Clear stale inspect JSON whenever the selection changes so the
+            // detail panel never shows JSON from the previously-selected image.
+            if selectedImageID != oldValue {
+                imageInspectText = ""
+            }
+        }
+    }
+    /// Raw JSON returned by `container image inspect` for the selected image.
+    var imageInspectText: String = ""
+    /// Transient summary line from the most recent `container image prune` run,
+    /// e.g. `"Reclaimed Zero KB in disk space"`.  Cleared when the user dismisses.
+    var pruneSummary: String?
+
     let runtime: any ContainerRuntime
 
     /// Previous CPU sample per container id: (cumulative usec, wall-clock instant).
@@ -83,6 +103,11 @@ final class ContainersViewModel {
         return containers.first { $0.id == selectedContainerID }
     }
 
+    var selectedImage: ImageSummary? {
+        guard let selectedImageID else { return nil }
+        return images.first { $0.id == selectedImageID }
+    }
+
     var filteredContainers: [ContainerSummary] {
         switch sidebarSelection {
         case .all, .none:
@@ -98,7 +123,7 @@ final class ContainersViewModel {
 
     // MARK: Methods
 
-    /// Refreshes containers, system status, and stats.
+    /// Refreshes containers, system status, stats, and images.
     /// - Parameter quiet: when `true`, skips the `isLoading` toggle (suitable for
     ///   background polling so the UI doesn't flicker on every cycle).
     func refresh(quiet: Bool = false) async {
@@ -118,14 +143,43 @@ final class ContainersViewModel {
             return
         }
 
-        // Fetch stats separately so a stats failure never blanks the container list.
-        do {
-            let freshStats = try await runtime.stats(id: nil)
+        // Fetch stats and images concurrently; failures in either are non-fatal so a
+        // broken images endpoint never blanks the container list (and vice versa).
+        // Each branch is wrapped in a non-throwing async closure so that a throw from
+        // one does not cancel the other's in-flight work.
+        async let statsResult = fetchStats()
+        async let imagesResult = fetchImages()
+
+        switch await statsResult {
+        case .success(let freshStats):
             mergeStats(freshStats)
-        } catch {
+        case .failure(let error):
             // Non-fatal: keep stale stats, surface a non-blocking error message.
             errorMessage = error.localizedDescription
         }
+
+        switch await imagesResult {
+        case .success(let freshImages):
+            images = Self.markInUse(freshImages, containers: containers)
+        case .failure(let error):
+            // Non-fatal: keep stale image list, surface a non-blocking error message.
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Non-throwing wrapper for `runtime.stats` used by `refresh` to allow concurrent
+    /// `async let` binding without propagating an error that would cancel sibling tasks.
+    private func fetchStats() async -> Result<[ContainerStats], any Error> {
+        do { return .success(try await runtime.stats(id: nil)) }
+        catch { return .failure(error) }
+    }
+
+    /// Non-throwing wrapper for `runtime.listImages` used by `refresh` to allow
+    /// concurrent `async let` binding without propagating an error that would cancel
+    /// sibling tasks.
+    private func fetchImages() async -> Result<[ImageSummary], any Error> {
+        do { return .success(try await runtime.listImages()) }
+        catch { return .failure(error) }
     }
 
     func refreshStats() async {
@@ -239,6 +293,34 @@ final class ContainersViewModel {
         guard elapsedSeconds > 0 else { return nil }
         let deltaUsec = currentUsec - previousUsec
         return (Double(deltaUsec) / 1_000_000.0) / elapsedSeconds * 100.0
+    }
+
+    // MARK: In-use computation
+
+    /// Marks each image as in-use when at least one container references it.
+    ///
+    /// The match is an exact string comparison between `ImageSummary.reference`
+    /// and `ContainerSummary.imageReference`.  A container whose `imageReference`
+    /// is `nil` never matches any image.
+    ///
+    /// This is a pure, `nonisolated` helper so it can be exercised in tests
+    /// without a view-model instance (same pattern as `cpuPercent`/`mergedEntry`).
+    ///
+    /// - Parameters:
+    ///   - images: The freshly-decoded image list.
+    ///   - containers: The current container list (may include stopped containers).
+    /// - Returns: A copy of `images` with `isInUse` set correctly for each element.
+    nonisolated static func markInUse(
+        _ images: [ImageSummary],
+        containers: [ContainerSummary]
+    ) -> [ImageSummary] {
+        // Build a set of all non-nil image references for O(1) lookup.
+        let usedRefs = Set(containers.compactMap(\.imageReference))
+        return images.map { image in
+            var m = image
+            m.isInUse = usedRefs.contains(image.reference)
+            return m
+        }
     }
 
     // MARK: Central error handler
@@ -364,6 +446,50 @@ final class ContainersViewModel {
             if selectedContainer == nil {
                 selectedContainerID = nil
             }
+        } catch {
+            handle(error)
+        }
+    }
+
+    // MARK: Image actions
+
+    /// Loads the raw inspect JSON for `image` into `imageInspectText`.
+    ///
+    /// Read-only: errors set `errorMessage` directly (same pattern as `inspect(_:)`),
+    /// not via `handle(_:)`, because a failed inspect should not alter system status.
+    func inspectImage(_ image: ImageSummary) async {
+        do {
+            imageInspectText = try await runtime.inspectImage(reference: image.reference)
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Deletes `image` from the local store.
+    ///
+    /// Clears the selection when it was pointing to the deleted image, then
+    /// triggers a full refresh so the list and in-use flags are up to date.
+    func deleteImage(_ image: ImageSummary) async {
+        do {
+            try await runtime.deleteImage(reference: image.reference)
+            if selectedImageID == image.id {
+                selectedImageID = nil
+            }
+            errorMessage = nil
+            await refresh()
+        } catch {
+            handle(error)
+        }
+    }
+
+    /// Runs `container image prune` (dangling images only) and stores the
+    /// CLI summary line in `pruneSummary` for display, then refreshes.
+    func pruneImages() async {
+        do {
+            pruneSummary = try await runtime.pruneImages()
+            errorMessage = nil
+            await refresh()
         } catch {
             handle(error)
         }
