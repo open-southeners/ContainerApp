@@ -59,11 +59,15 @@ struct ImagesView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     Table(model.images, selection: $model.selectedImageID) {
+                        // Name: no .width modifier → flexible, absorbs all remaining
+                        // space after the fixed-width columns are measured.  This is
+                        // what makes the table fill the pane horizontally; a column
+                        // with no constraint is the only one the layout engine treats
+                        // as truly resizable to fill the parent.
                         TableColumn("Name") { image in
                             Text(image.displayName)
                                 .fontWeight(.medium)
                         }
-                        .width(min: 100, ideal: 140)
 
                         TableColumn("Tag") { image in
                             Text(image.tag ?? "–")
@@ -78,11 +82,12 @@ struct ImagesView: View {
                         }
                         .width(min: 70, ideal: 90)
 
+                        // Created: also unconstrained so it can share any leftover
+                        // horizontal space with Name, keeping date text readable.
                         TableColumn("Created") { image in
                             Text(formattedDate(image.createdAt))
                                 .foregroundStyle(.secondary)
                         }
-                        .width(min: 100, ideal: 130)
 
                         TableColumn("Arch") { image in
                             Text(filteredArchitectures(image.architectures).joined(separator: ", "))

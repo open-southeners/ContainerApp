@@ -46,17 +46,20 @@ struct ContainerContentView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     Table(model.filteredContainers, selection: $model.selectedContainerID) {
+                        // Name: no .width modifier → flexible, absorbs remaining
+                        // space after fixed-width columns are laid out.  This makes
+                        // the table stretch to fill the pane horizontally.
                         TableColumn("Name") { container in
                             Text(container.name)
                                 .fontWeight(.medium)
                         }
-                        .width(min: 120, ideal: 160)
 
+                        // Image: also unconstrained so it can grow with the window
+                        // alongside Name, keeping long image references readable.
                         TableColumn("Image") { container in
                             Text(container.image)
                                 .foregroundStyle(.secondary)
                         }
-                        .width(min: 140, ideal: 200)
 
                         TableColumn("State") { container in
                             Label(container.state.displayName, systemImage: container.state.systemImage)
