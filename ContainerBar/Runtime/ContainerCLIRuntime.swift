@@ -214,6 +214,11 @@ final class ContainerCLIRuntime: ContainerRuntime {
         return try FlexibleContainerDecoder.decodeStats(from: result.stdout)
     }
 
+    /// `container start <id>`
+    func start(id: String) async throws {
+        try await runChecked(["start", id], id: id)
+    }
+
     /// `container stop <id>`
     func stop(id: String) async throws {
         try await runChecked(["stop", id], id: id)
