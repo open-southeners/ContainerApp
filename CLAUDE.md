@@ -92,6 +92,15 @@ decoded results flowing back up.
 - `container stats --format json --no-stream` — only running containers appear; cumulative usec,
   no percentage.
 - `container inspect <id>` — JSON by default, no `--format` flag; returns an array.
+- `container image list --format json` — each element has `configuration.name` (fully-qualified
+  ref, same form as containers' `configuration.image.reference` — exact string match works for
+  in-use detection) and per-arch `variants`. **`configuration.descriptor.size` is the manifest
+  size (~9 KB), not the image size** — real weight is the sum of `variants[].size`. Multi-arch
+  images include `architecture: "unknown"` attestation shims — filter them for display.
+- `container image inspect <ref>` — takes name refs, **no `--format` flag**, prints pretty JSON
+  (an array of the same element shape as `image list`).
+- `container image prune` — dangling images only (`--all` would cover all unused); prints a
+  summary line on stdout ("Reclaimed … in disk space") which the UI surfaces verbatim.
 - When the apiserver is stopped, every command exits non-zero with `XPC connection error` and the
   hint `container system start`.
 - First-ever `container system start` needs a kernel and prompts interactively (fails under our

@@ -1,8 +1,9 @@
 import SwiftUI
 
 /// Main content area for the dashboard.
-/// Switches on sidebar selection: Images shows a placeholder; Settings renders
-/// SettingsView; all other sections show the container table + optional detail panel.
+/// Switches on sidebar selection: Images shows a placeholder (gated behind
+/// `SystemStatusGate`); Settings renders `SettingsView`; all other sections
+/// show the container table + optional detail panel, also gated.
 struct ContainerContentView: View {
     @Environment(ContainersViewModel.self) private var model
 
@@ -10,54 +11,14 @@ struct ContainerContentView: View {
         @Bindable var model = model
         switch model.sidebarSelection {
         case .images:
-            EmptyStateView(
-                title: "Images",
-                systemImage: "externaldrive",
-                description: "Image management is coming soon."
-            )
+            SystemStatusGate {
+                ImagesView()
+            }
         case .settings:
             SettingsView()
         default:
-            // System-status states take precedence over the container table.
-            if model.systemStatus == .unavailable {
-                cliNotFoundContent
-            } else if model.systemStatus == .stopped {
-                systemStoppedContent(model: model)
-            } else {
+            SystemStatusGate {
                 containerListContent(model: model)
-            }
-        }
-    }
-
-    // MARK: System-status full-area states
-
-    private var cliNotFoundContent: some View {
-        ContentUnavailableView {
-            Label("Apple container CLI not found", systemImage: "exclamationmark.triangle")
-        } description: {
-            Text("Install Apple container, then configure the path in Settings.")
-        }
-    }
-
-    @ViewBuilder
-    private func systemStoppedContent(model: ContainersViewModel) -> some View {
-        VStack(spacing: 16) {
-            ContentUnavailableView {
-                Label("Container system is not running", systemImage: "power")
-            } description: {
-                Text("Start the container system to list and manage containers.")
-            } actions: {
-                if model.isLoading {
-                    ProgressView()
-                        .progressViewStyle(.circular)
-                        .controlSize(.regular)
-                } else {
-                    Button("Start System") {
-                        Task { await model.startSystem() }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                }
             }
         }
     }
@@ -119,9 +80,9 @@ struct ContainerContentView: View {
                         .width(min: 80, ideal: 100)
                     }
                     // Size the table to its rows so it doesn't pad out a short
-                    // list with empty filler rows. Caps at `Self.maxTableHeight`,
+                    // list with empty filler rows. Caps at `TableSizing.maxHeight`,
                     // beyond which the table scrolls internally.
-                    .frame(maxHeight: tableHeight(rowCount: model.filteredContainers.count))
+                    .frame(maxHeight: TableSizing.height(rowCount: model.filteredContainers.count))
                 }
             }
 
@@ -142,20 +103,6 @@ struct ContainerContentView: View {
     }
 
     // MARK: Helpers
-
-    /// Approximate height of one table row, including SwiftUI's default cell padding.
-    private static let tableRowHeight: CGFloat = 28
-    /// Height of the table header row.
-    private static let tableHeaderHeight: CGFloat = 28
-    /// Upper bound; past this the table keeps its height and scrolls internally.
-    private static let maxTableHeight: CGFloat = 600
-
-    /// Height that fits exactly `rowCount` rows plus the header, capped so long
-    /// lists don't push the detail pane off-screen.
-    private func tableHeight(rowCount: Int) -> CGFloat {
-        let contentHeight = Self.tableHeaderHeight + CGFloat(rowCount) * Self.tableRowHeight
-        return min(contentHeight, Self.maxTableHeight)
-    }
 
     private func emptyDescription(for section: SidebarSection?) -> String {
         switch section {

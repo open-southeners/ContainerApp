@@ -6,6 +6,11 @@ struct ContainersDashboardView: View {
 
     @State private var isShowingPruneConfirmation = false
 
+    /// `true` when the sidebar is showing the Images section.
+    private var isImagesSection: Bool {
+        model.sidebarSelection == .images
+    }
+
     var body: some View {
         @Bindable var model = model
         NavigationSplitView {
@@ -49,16 +54,30 @@ struct ContainersDashboardView: View {
                 }
                 .disabled(true)
 
+                // The Prune button label and confirmation text adapt to the active section:
+                // Images section → prune dangling images; all other sections → prune stopped containers.
                 Button {
                     isShowingPruneConfirmation = true
                 } label: {
-                    Label("Prune", systemImage: "trash.slash")
+                    Label(
+                        isImagesSection ? "Prune Images" : "Prune",
+                        systemImage: "trash.slash"
+                    )
                 }
             }
         }
-        .confirmationDialog("Remove all stopped containers?", isPresented: $isShowingPruneConfirmation) {
-            Button("Prune", role: .destructive) {
-                Task { await model.prune() }
+        .confirmationDialog(
+            isImagesSection ? "Remove dangling images?" : "Remove all stopped containers?",
+            isPresented: $isShowingPruneConfirmation
+        ) {
+            if isImagesSection {
+                Button("Prune Images", role: .destructive) {
+                    Task { await model.pruneImages() }
+                }
+            } else {
+                Button("Prune", role: .destructive) {
+                    Task { await model.prune() }
+                }
             }
         }
         .task {
