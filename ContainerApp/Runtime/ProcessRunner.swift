@@ -14,8 +14,28 @@ protocol ProcessRunning: Sendable {
     func run(
         executableURL: URL,
         arguments: [String],
-        environment: [String: String]?
+        environment: [String: String]?,
+        currentDirectoryURL: URL?
     ) async throws -> ProcessResult
+}
+
+// MARK: - Default-parameter overload
+
+extension ProcessRunning {
+    /// Convenience overload that forwards `currentDirectoryURL: nil`.
+    /// Existing call sites that omit the parameter continue to compile unchanged.
+    func run(
+        executableURL: URL,
+        arguments: [String],
+        environment: [String: String]?
+    ) async throws -> ProcessResult {
+        try await run(
+            executableURL: executableURL,
+            arguments: arguments,
+            environment: environment,
+            currentDirectoryURL: nil
+        )
+    }
 }
 
 // MARK: - ProcessRunner
@@ -30,7 +50,8 @@ struct ProcessRunner: ProcessRunning {
     func run(
         executableURL: URL,
         arguments: [String],
-        environment: [String: String]?
+        environment: [String: String]?,
+        currentDirectoryURL: URL? = nil
     ) async throws -> ProcessResult {
         try await withCheckedThrowingContinuation { continuation in
             // Buffer accumulator: a reference type whose mutation is serialised by
@@ -66,6 +87,11 @@ struct ProcessRunner: ProcessRunning {
             let process = Process()
             process.executableURL = executableURL
             process.arguments = arguments
+
+            // Set the working directory when the caller provides one (e.g. compose projects).
+            if let currentDirectoryURL {
+                process.currentDirectoryURL = currentDirectoryURL
+            }
 
             // Inherit the caller's environment or use an explicit override.
             if let environment {
