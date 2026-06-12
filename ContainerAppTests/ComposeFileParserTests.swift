@@ -60,6 +60,26 @@ struct ComposeFileParserTests {
         #expect(project.serviceImages["cache"] == "redis:7")
     }
 
+    @Test("container_name overrides are preserved per service")
+    func containerNameOverridesPreserved() throws {
+        let yaml = """
+        name: localdev
+        services:
+          mysql:
+            image: mysql:8
+            container_name: local_mysql_server
+          redis:
+            image: redis:latest
+        """
+        let project = try ComposeFileParser.parse(
+            text: yaml,
+            fileURL: URL(fileURLWithPath: "/tmp/docker-compose.yml")
+        )
+
+        #expect(project.serviceContainerNames["mysql"] == "local_mysql_server")
+        #expect(project.serviceContainerNames["redis"] == nil)
+    }
+
     @Test("compose-named.yml: id equals standardized file path")
     func namedFixtureID() throws {
         let (text, url) = try loadComposeFixture(named: "compose-named")

@@ -29,6 +29,11 @@ struct ComposeProject: Identifiable, Hashable, Sendable {
     /// Used for display only — never passed to the CLI.
     let serviceImages: [String: String]
 
+    /// Explicit `container_name` per service, when declared in the compose file.
+    /// Services without an override use container-compose's default
+    /// `<project>-<service>` identifier.
+    let serviceContainerNames: [String: String]
+
     /// Direct dependencies per service, as declared by `depends_on:` in the compose file.
     /// Keys are service names; values are the service names that key depends on.
     /// Both the string-array form (`depends_on: [db, cache]`) and the map form
@@ -47,6 +52,7 @@ struct ComposeProject: Identifiable, Hashable, Sendable {
         displayName: String,
         serviceNames: [String],
         serviceImages: [String: String],
+        serviceContainerNames: [String: String] = [:],
         serviceDependencies: [String: [String]] = [:]
     ) {
         self.id = id
@@ -55,14 +61,15 @@ struct ComposeProject: Identifiable, Hashable, Sendable {
         self.displayName = displayName
         self.serviceNames = serviceNames
         self.serviceImages = serviceImages
+        self.serviceContainerNames = serviceContainerNames
         self.serviceDependencies = serviceDependencies
     }
 }
 
 /// The live status of one service within a compose project, derived by matching
-/// the expected container id (`<project>-<service>`) against the running container list.
+/// its explicit `container_name` or default `<project>-<service>` identifier.
 struct ComposeServiceStatus: Identifiable, Hashable, Sendable {
-    /// Expected container id: `"<project>-<service>"`.
+    /// Actual container id expected for this service.
     let id: String
 
     /// Service name as declared in the compose file.

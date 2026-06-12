@@ -8,7 +8,8 @@ import Foundation
 private func makeProject(
     projectName: String,
     serviceNames: [String],
-    serviceImages: [String: String] = [:]
+    serviceImages: [String: String] = [:],
+    serviceContainerNames: [String: String] = [:]
 ) -> ComposeProject {
     ComposeProject(
         id: "/tmp/\(projectName)/compose.yml",
@@ -16,7 +17,8 @@ private func makeProject(
         projectName: projectName,
         displayName: projectName,
         serviceNames: serviceNames,
-        serviceImages: serviceImages
+        serviceImages: serviceImages,
+        serviceContainerNames: serviceContainerNames
     )
 }
 
@@ -175,6 +177,24 @@ struct ComposeStatusTests {
 
         let status = try #require(statuses.first)
         #expect(status.id == "my_app-worker")
+    }
+
+    @Test("Explicit container_name is used for status matching")
+    func explicitContainerNameMatching() throws {
+        let project = makeProject(
+            projectName: "LocalDev",
+            serviceNames: ["mysql"],
+            serviceContainerNames: ["mysql": "local_mysql_server"]
+        )
+        let containers = [
+            makeContainer(id: "local_mysql_server", state: .running),
+        ]
+
+        let status = try #require(
+            ContainersViewModel.serviceStatuses(for: project, containers: containers).first
+        )
+        #expect(status.id == "local_mysql_server")
+        #expect(status.state == .running)
     }
 
     // MARK: Exited state is preserved

@@ -21,9 +21,10 @@ private struct ComposeFileStub: Decodable {
     let services: [String: ServiceStub?]?
 }
 
-/// Minimal per-service stub — only `image` is extracted for display.
+/// Minimal per-service stub containing the fields used by the app.
 private struct ServiceStub: Decodable {
     let image: String?
+    let container_name: String?
     let depends_on: DependsOn?
 
     /// A `Decodable` sink that accepts any JSON/YAML value shape — object, string,
@@ -118,9 +119,13 @@ enum ComposeFileParser {
 
         // Build raw image map — null service bodies (nil ServiceStub) have no image.
         var serviceImages: [String: String] = [:]
+        var serviceContainerNames: [String: String] = [:]
         for (name, stubOpt) in servicesMap {
             if let image = stubOpt?.image {
                 serviceImages[name] = image
+            }
+            if let containerName = stubOpt?.container_name, !containerName.isEmpty {
+                serviceContainerNames[name] = containerName
             }
         }
 
@@ -139,6 +144,7 @@ enum ComposeFileParser {
             displayName: displayName,
             serviceNames: serviceNames,
             serviceImages: serviceImages,
+            serviceContainerNames: serviceContainerNames,
             serviceDependencies: serviceDependencies
         )
     }
