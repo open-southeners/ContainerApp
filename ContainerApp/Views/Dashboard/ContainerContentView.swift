@@ -2,8 +2,9 @@ import SwiftUI
 
 /// Main content area for the dashboard.
 /// Switches on sidebar selection: Images shows a placeholder (gated behind
-/// `SystemStatusGate`); Settings renders `SettingsView`; all other sections
-/// show the container table + optional detail panel, also gated.
+/// `SystemStatusGate`); Compose shows compose projects (also gated); Settings
+/// renders `SettingsView`; all other sections show the container table + optional
+/// detail panel, also gated.
 struct ContainerContentView: View {
     @Environment(ContainersViewModel.self) private var model
 
@@ -13,6 +14,10 @@ struct ContainerContentView: View {
         case .images:
             SystemStatusGate {
                 ImagesView()
+            }
+        case .compose:
+            SystemStatusGate {
+                ComposeProjectsView()
             }
         case .settings:
             SettingsView()
