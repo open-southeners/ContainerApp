@@ -79,7 +79,7 @@ Observed sizes for the alpine:latest fixture (1 variant):
 
 | File | Type | Notes |
 |---|---|---|
-| `compose-named.yml` | Authored | Top-level `name: myapp`, two services (`web`, `db`), `image:` refs, `depends_on` |
+| `compose-named.yml` | Authored | Top-level `name: myapp`, three services (`web`, `db`, `cache`) in non-alphabetical declaration order, `image:` refs, `depends_on` on `web` (array form) |
 | `compose-unnamed.yml` | Authored | No `name:`, one service with `${TAG:-latest}` image ref (kept raw), one null-body service (`cache:`) |
 
 These are authored (not captured) fixture files used by `ComposeFileParserTests`.
