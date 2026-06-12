@@ -15,10 +15,20 @@ final class MockComposeRuntime: ComposeRuntime {
     /// list immediately after the action completes.
     private let mockStore: MockStore?
 
+    /// When non-nil, the next call to `up` throws this error instead of succeeding.
+    /// Provide at `init` time to keep the type `Sendable` under strict concurrency
+    /// (stored as a let constant, never mutated after construction).
+    private let failNextUp: ContainerRuntimeError?
+
     /// Convenience init that accepts a `MockContainerRuntime` (the most common call site).
     /// Pass `nil` when a no-op mock is sufficient.
-    init(containerRuntime: MockContainerRuntime? = nil) {
+    ///
+    /// - Parameters:
+    ///   - containerRuntime: The container runtime whose store `up` will mutate.
+    ///   - failNextUp: When non-nil, the first call to `up` throws this error.
+    init(containerRuntime: MockContainerRuntime? = nil, failNextUp: ContainerRuntimeError? = nil) {
         self.mockStore = containerRuntime?.store
+        self.failNextUp = failNextUp
     }
 
     // MARK: - ComposeRuntime
@@ -28,8 +38,13 @@ final class MockComposeRuntime: ComposeRuntime {
     /// For each `<project.projectName>-<service>` id, the container is inserted into
     /// the mock store with `.running` state if it does not already exist, or
     /// transitioned to `.running` if it was previously stopped/exited.
+    /// Throws `failNextUp` (when set at init) before performing any store mutations.
     func up(project: ComposeProject, services: [String], rebuild: Bool, noCache: Bool) async throws -> String {
         try await Task.sleep(for: .milliseconds(300))
+
+        if let error = failNextUp {
+            throw error
+        }
 
         // Determine which service names to bring up.
         let serviceList = services.isEmpty ? project.serviceNames : services
