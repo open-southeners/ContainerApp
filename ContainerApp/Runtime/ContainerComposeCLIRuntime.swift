@@ -60,6 +60,97 @@ extension String {
 
         return result
     }
+
+    /// Drops known-benign system-level noise lines that Apple CLI tools emit to
+    /// stderr on macOS 26 (App Intents/linkd registration chatter, os_log info/debug
+    /// records).  Everything else is returned verbatim, in the original order.
+    ///
+    /// Patterns filtered:
+    /// - Any line containing `com.apple.linkd` (covers the
+    ///   `Unable to get synchronousRemoteObjectProxy … autoShortcut` multi-word chatter).
+    /// - Lines whose first token looks like a timestamp immediately followed by `info` or
+    ///   `debug` and a `com.apple.` subsystem
+    ///   (format: `YYYY-MM-DDTHH:MM:SS… info com.apple.…`).
+    ///
+    /// The result is trimmed.
+    ///
+    /// This is `nonisolated` pure logic — directly testable without any runtime context.
+    internal static func filteringSystemNoise(_ input: String) -> String {
+        let lines = input.components(separatedBy: "\n")
+        let filtered = lines.filter { line in
+            // Drop linkd chatter (covers single-line and wrapped variants).
+            if line.contains("com.apple.linkd") { return false }
+
+            // Drop timestamped os_log info/debug lines:
+            // Pattern: <YYYY-MM-DDTHH:MM:SS…> <space> (info|debug) <space> com.apple.…
+            // We do a lightweight prefix scan — no regex — for Swift 6 compatibility.
+            // A qualifying line starts with a 4-digit year and a '-'.
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.count > 11,
+               trimmed[trimmed.startIndex].isNumber,
+               trimmed[trimmed.index(trimmed.startIndex, offsetBy: 4)] == "-" {
+                // Find the end of the first whitespace-separated token (the timestamp).
+                if let spaceAfterTimestamp = trimmed.firstIndex(of: " ") {
+                    let afterTimestamp = trimmed[trimmed.index(after: spaceAfterTimestamp)...]
+                    if afterTimestamp.hasPrefix("info com.apple.")
+                        || afterTimestamp.hasPrefix("debug com.apple.") {
+                        return false
+                    }
+                }
+            }
+
+            return true
+        }
+        return filtered.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Builds a human-readable failure diagnostic from the raw stdout/stderr of a
+    /// failed `container-compose` invocation.
+    ///
+    /// Strategy (in priority order):
+    /// 1. If filtered stderr is non-empty, use it.
+    /// 2. If filtered stdout is non-empty, use its **tail** (last 30 lines / ≤2000 chars)
+    ///    — compose writes long progress logs to stdout and real errors appear at the end.
+    /// 3. If both streams have meaningful content after filtering, include both separated
+    ///    by a blank line (stderr first, then the stdout tail).
+    /// 4. If both streams are empty after filtering, fall back to
+    ///    `"exit code <N> with no output"` so the banner is never blank.
+    ///
+    /// This is `nonisolated` pure logic — directly testable without any runtime context.
+    internal static func failureDiagnostic(stdout: String, stderr: String, exitCode: Int32) -> String {
+        let filteredStderr = filteringSystemNoise(strippingANSIEscapes(stderr))
+        let filteredStdout = filteringSystemNoise(strippingANSIEscapes(stdout))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Tail of stdout: last 30 lines, capped at 2000 characters.
+        let stdoutTail: String = {
+            guard !filteredStdout.isEmpty else { return "" }
+            let lines = filteredStdout.components(separatedBy: "\n")
+            let tail = lines.suffix(30).joined(separator: "\n")
+            if tail.count <= 2000 { return tail }
+            // Trim from the front to ≤ 2000 chars, preserving line boundaries.
+            let truncated = String(tail.suffix(2000))
+            // Drop a potentially broken first line.
+            if let newline = truncated.firstIndex(of: "\n") {
+                return String(truncated[truncated.index(after: newline)...])
+            }
+            return truncated
+        }()
+
+        let hasStderr = !filteredStderr.isEmpty
+        let hasStdout = !stdoutTail.isEmpty
+
+        switch (hasStderr, hasStdout) {
+        case (true, true):
+            return filteredStderr + "\n\n" + stdoutTail
+        case (true, false):
+            return filteredStderr
+        case (false, true):
+            return stdoutTail
+        case (false, false):
+            return "exit code \(exitCode) with no output"
+        }
+    }
 }
 
 // MARK: - ContainerComposeCLIRuntime
@@ -198,19 +289,23 @@ final class ContainerComposeCLIRuntime: ComposeRuntime {
 
         guard result.exitCode != 0 else { return strippedStdout }
 
-        // Combine stderr and stdout for error mapping (compose writes errors to stderr).
-        let combined = result.stderr.isEmpty ? result.stdout : result.stderr
-        let strippedCombined = String.strippingANSIEscapes(combined)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        // Also check stdout for XPC errors (compose sometimes writes to stdout).
-        let diagnostic = strippedCombined.isEmpty ? strippedStdout : strippedCombined
-
         // XPC / apiserver connectivity errors.
+        // Check the COMBINED raw streams (unfiltered) — noise cannot false-positive
+        // these phrases and we don't want to miss them.
         // Live-verified 2026-06-12: up exits 1, stderr "Error: XPC connection error: Connection invalid"
-        if diagnostic.contains("XPC connection error") || diagnostic.contains("container system start") {
+        let combinedRaw = result.stdout + result.stderr
+        if combinedRaw.contains("XPC connection error") || combinedRaw.contains("container system start") {
             throw ContainerRuntimeError.systemNotRunning
         }
+
+        // Build a noise-filtered, human-readable diagnostic.  `failureDiagnostic`
+        // strips ANSI and system noise from both streams, prefers stderr, falls back
+        // to the stdout tail, and never returns a blank string.
+        let diagnostic = String.failureDiagnostic(
+            stdout: result.stdout,
+            stderr: result.stderr,
+            exitCode: result.exitCode
+        )
 
         throw ContainerRuntimeError.commandFailed(
             exitCode: result.exitCode,
