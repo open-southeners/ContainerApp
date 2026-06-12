@@ -3,6 +3,11 @@ name: ContainerApp
 options:
   bundleIdPrefix: com.opensoutheners
 
+packages:
+  Yams:
+    url: https://github.com/jpsim/Yams.git
+    from: 6.0.0
+
 targets:
   ContainerApp:
     type: application
@@ -10,6 +15,8 @@ targets:
     deploymentTarget: "26.0"
     sources:
       - ContainerApp
+    dependencies:
+      - package: Yams
     settings:
       base:
         SWIFT_VERSION: "6.0"

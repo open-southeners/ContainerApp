@@ -74,3 +74,28 @@ It takes name refs (`alpine:latest`), not digest IDs.
 Observed sizes for the alpine:latest fixture (1 variant):
 - `configuration.descriptor.size` = 9218 (manifest, ~9 KB — do NOT display this)
 - `variants[0].size` = 4203982 (arm64 layer data, ~4 MB — the real image size)
+
+## Compose fixtures (container-compose 0.12.0, captured/authored 2026-06-12)
+
+| File | Type | Notes |
+|---|---|---|
+| `compose-named.yml` | Authored | Top-level `name: myapp`, two services (`web`, `db`), `image:` refs, `depends_on` |
+| `compose-unnamed.yml` | Authored | No `name:`, one service with `${TAG:-latest}` image ref (kept raw), one null-body service (`cache:`) |
+
+These are authored (not captured) fixture files used by `ComposeFileParserTests`.
+
+### Live-verified facts (container-compose 0.12.0 + container runtime 1.0.0, 2026-06-12)
+
+- `container-compose --version` prints: `container-compose version 0.12.0`
+- With the apiserver stopped, `container-compose up` exits 1 with stderr:
+  `Error: XPC connection error: Connection invalid`
+  (the `container system start` hint does **not** appear — unlike the `container` CLI)
+- Info/progress lines go to **stdout** with `\r` rewrites; final lines include
+  `<service>: <container-id>`.
+- **Naming (live-verified)**:
+  - `name: probeproj` in compose file → container `probeproj-web`
+  - Folder `my.app` without `name:` → `my_app-web` (dots replaced with underscores)
+- ⚠ **`container-compose down` 0.12.0 is broken against container runtime 1.0.0**:
+  XPC protocol mismatch (`DecodingError.typeMismatch … Path: signal`); container keeps
+  running. `down` is implemented via `ContainerRuntime.stop(id:)` per matched container
+  in reverse YAML service order instead. Revisit when the brew formula reaches 1.0.0+.
