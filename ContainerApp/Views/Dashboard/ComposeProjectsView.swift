@@ -226,6 +226,17 @@ struct ComposeProjectsView: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
                 .accessibilityLabel("File missing")
+        } else if model.duplicateProjectNames.contains(project.projectName) {
+            // Two or more registered projects share this project name, which causes
+            // container-id collisions (both produce "<name>-<service>" containers).
+            Image(systemName: "exclamationmark.triangle")
+                .foregroundStyle(.yellow)
+                .accessibilityLabel("Duplicate project name")
+                .help(
+                    "Another registered project has the same derived name \"\(project.projectName)\". " +
+                    "Both projects will produce containers with identical ids, causing collisions. " +
+                    "Rename one project's top-level `name:` field or move it to a differently-named folder."
+                )
         } else {
             let statuses = ContainersViewModel.serviceStatuses(
                 for: project,
