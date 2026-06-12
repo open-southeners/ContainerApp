@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Project renamed from ContainerBar to ContainerApp: source directories, Xcode targets, scheme, bundle identifiers, and all documentation updated accordingly.
+
 ## [1.1.0] - 2026-06-11
 
 ### Added
