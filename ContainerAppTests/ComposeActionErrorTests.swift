@@ -166,6 +166,25 @@ struct ComposeActionErrorTests {
             "project must be removed from busyComposeProjects after the action completes"
         )
     }
+
+    @Test("upProject publishes progress before the action completes")
+    func upProjectPublishesLiveProgress() async {
+        let containerRuntime = MockContainerRuntime()
+        let composeRuntime = MockComposeRuntime(containerRuntime: containerRuntime)
+        let vm = ContainersViewModel(
+            runtime: containerRuntime,
+            composeRuntime: composeRuntime
+        )
+
+        let project = makeProject(projectName: "progressapp")
+        let task = vm.upProject(project)
+        try? await Task.sleep(for: .milliseconds(50))
+
+        #expect(vm.busyComposeProjects.contains(project.id))
+        #expect(vm.lastComposeOutput == "Resolving services…")
+
+        await task.value
+    }
 }
 
 // MARK: - FailingStopMockRuntime
