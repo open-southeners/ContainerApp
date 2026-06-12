@@ -4,7 +4,11 @@ import SwiftUI
 
 @main
 struct ContainerAppApp: App {
-    @State private var model = ContainersViewModel(runtime: ContainerCLIRuntime())
+    @State private var model = ContainersViewModel(
+        runtime: ContainerCLIRuntime(),
+        composeRuntime: ContainerComposeCLIRuntime(),
+        composeStore: ComposeProjectStore()
+    )
 
     @MainActor
     private var menuBarIcon: Image {
