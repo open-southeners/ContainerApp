@@ -41,13 +41,7 @@ struct LogsView: View {
                     description: "This container hasn't produced any log output."
                 )
             } else {
-                ScrollView([.horizontal, .vertical]) {
-                    Text(model.logsText)
-                        .font(.system(.body, design: .monospaced))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(8)
-                }
+                SelectableMonospacedTextView(text: model.logsText)
             }
         }
         // Load immediately, then keep polling while the tab is visible. Keyed on
