@@ -8,32 +8,9 @@ import Foundation
 // machines that don't have the `container` CLI installed or where the container
 // system service is not running.  Using a synchronous `Process` call here is
 // intentional — `ConditionTrait.enabled(if:)` requires a synchronous predicate.
-
-/// Returns `true` when:
-///   1. `/usr/local/bin/container` is executable, AND
-///   2. `container system status` exits 0 (system is up).
-private func containerSystemIsAvailable() -> Bool {
-    let binaryPath = "/usr/local/bin/container"
-    guard FileManager.default.isExecutableFile(atPath: binaryPath) else {
-        return false
-    }
-
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: binaryPath)
-    process.arguments = ["system", "status"]
-    // Silence output — we only care about the exit code.
-    process.standardOutput = FileHandle.nullDevice
-    process.standardError  = FileHandle.nullDevice
-
-    do {
-        try process.run()
-        process.waitUntilExit()
-    } catch {
-        return false
-    }
-
-    return process.terminationStatus == 0
-}
+//
+// `containerSystemIsAvailable()` is defined in TestSupport.swift and shared with
+// other integration suites — it mirrors the runtime's binary discovery order.
 
 // MARK: - Unique container name helper
 
@@ -46,11 +23,14 @@ private func uniqueContainerName(suffix: String) -> String {
 // MARK: - Direct CLI helper (used to create/destroy scratch containers)
 
 /// Runs `container <arguments>` synchronously and returns the exit code.
+/// Uses the same binary discovery as the availability gate so Homebrew-path
+/// machines work without modification.
 /// Used for setup/teardown where async concurrency is not needed.
 @discardableResult
 private func runCLI(_ arguments: [String]) -> Int32 {
+    guard let binaryPath = discoverContainerBinaryPath() else { return 127 }
     let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/usr/local/bin/container")
+    process.executableURL = URL(fileURLWithPath: binaryPath)
     process.arguments = arguments
     process.standardOutput = FileHandle.nullDevice
     process.standardError  = FileHandle.nullDevice
