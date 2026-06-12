@@ -46,7 +46,7 @@ jobs:
       - name: Test
         run: |
           xcodebuild \
-            -scheme ContainerBar \
+            -scheme ContainerApp \
             -destination 'platform=macOS,arch=arm64' \
             test
 
@@ -57,9 +57,9 @@ jobs:
         run: |
           set -euo pipefail
           xcodebuild \
-            -scheme ContainerBar \
+            -scheme ContainerApp \
             -configuration Release \
-            -archivePath build/ContainerBar.xcarchive \
+            -archivePath build/ContainerApp.xcarchive \
             -destination 'generic/platform=macOS' \
             ${VERSION:+MARKETING_VERSION="${VERSION}"} \
             archive
@@ -71,15 +71,15 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          APP_PATH="build/ContainerBar.xcarchive/Products/Applications/ContainerBar.app"
+          APP_PATH="build/ContainerApp.xcarchive/Products/Applications/ContainerApp.app"
           if [ ! -d "${APP_PATH}" ]; then
             echo "::error::Archived app not found at ${APP_PATH}"
-            ls -la build/ContainerBar.xcarchive/Products/Applications/ || true
+            ls -la build/ContainerApp.xcarchive/Products/Applications/ || true
             exit 1
           fi
-          ZIP_NAME="ContainerBar${VERSION:+-${VERSION}}.zip"
+          ZIP_NAME="ContainerApp${VERSION:+-${VERSION}}.zip"
           ditto -c -k --keepParent "${APP_PATH}" "${ZIP_NAME}"
-          ARTIFACT_NAME="ContainerBar-app${VERSION:+-${VERSION}}"
+          ARTIFACT_NAME="ContainerApp-app${VERSION:+-${VERSION}}"
           echo "zip-name=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
           echo "artifact-name=${ARTIFACT_NAME}" >> "$GITHUB_OUTPUT"
 

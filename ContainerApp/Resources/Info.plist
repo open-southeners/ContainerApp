@@ -19,7 +19,7 @@
 	<key>LSMinimumSystemVersion</key>
 	<string>26.0</string>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>ContainerBar opens Terminal to give you a shell inside a container.</string>
+	<string>ContainerApp opens Terminal to give you a shell inside a container.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2026 Open Southeners</string>
 	<key>NSPrincipalClass</key>

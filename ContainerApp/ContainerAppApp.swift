@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: - App entry point
 
 @main
-struct ContainerBarApp: App {
+struct ContainerAppApp: App {
     @State private var model = ContainersViewModel(runtime: ContainerCLIRuntime())
 
     @MainActor

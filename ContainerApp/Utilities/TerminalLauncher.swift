@@ -19,7 +19,7 @@ enum TerminalLauncher {
     // MARK: Private
 
     private static let logger = Logger(
-        subsystem: "com.opensoutheners.ContainerBar",
+        subsystem: "com.opensoutheners.ContainerApp",
         category: "TerminalLauncher"
     )
 

@@ -75,4 +75,4 @@ jobs:
           body: ${{ steps.changelog.outputs.release-notes }}
           prerelease: ${{ needs.version.outputs.prerelease == 'true' }}
           make_latest: ${{ needs.version.outputs.prerelease == 'false' }}
-          files: ContainerBar-${{ needs.version.outputs.version }}.zip
+          files: ContainerApp-${{ needs.version.outputs.version }}.zip

@@ -1,23 +1,23 @@
-name: ContainerBar
+name: ContainerApp
 
 options:
   bundleIdPrefix: com.opensoutheners
 
 targets:
-  ContainerBar:
+  ContainerApp:
     type: application
     platform: macOS
     deploymentTarget: "26.0"
     sources:
-      - ContainerBar
+      - ContainerApp
     settings:
       base:
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
-        PRODUCT_BUNDLE_IDENTIFIER: com.opensoutheners.ContainerBar
-        INFOPLIST_FILE: ContainerBar/Resources/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.opensoutheners.ContainerApp
+        INFOPLIST_FILE: ContainerApp/Resources/Info.plist
         GENERATE_INFOPLIST_FILE: NO
-        CODE_SIGN_ENTITLEMENTS: ContainerBar/ContainerBar.entitlements
+        CODE_SIGN_ENTITLEMENTS: ContainerApp/ContainerApp.entitlements
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGN_STYLE: Manual
         CODE_SIGNING_REQUIRED: NO
@@ -27,43 +27,43 @@ targets:
         CURRENT_PROJECT_VERSION: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
-  ContainerBarTests:
+  ContainerAppTests:
     type: bundle.unit-test
     platform: macOS
     deploymentTarget: "26.0"
     sources:
-      - path: ContainerBarTests
+      - path: ContainerAppTests
       - path: Fixtures
         buildPhase: resources
         type: folder
     dependencies:
-      - target: ContainerBar
+      - target: ContainerApp
     settings:
       base:
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
-        PRODUCT_BUNDLE_IDENTIFIER: com.opensoutheners.ContainerBarTests
+        PRODUCT_BUNDLE_IDENTIFIER: com.opensoutheners.ContainerAppTests
         GENERATE_INFOPLIST_FILE: YES
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGN_STYLE: Manual
         CODE_SIGNING_REQUIRED: NO
         CODE_SIGNING_ALLOWED: YES
         DEVELOPMENT_TEAM: ""
-        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/ContainerBar.app/Contents/MacOS/ContainerBar"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/ContainerApp.app/Contents/MacOS/ContainerApp"
         BUNDLE_LOADER: "$(TEST_HOST)"
 
 schemes:
-  ContainerBar:
+  ContainerApp:
     build:
       targets:
-        ContainerBar: all
-        ContainerBarTests: [testing]
+        ContainerApp: all
+        ContainerAppTests: [testing]
     run:
       config: Debug
     test:
       config: Debug
       targets:
-        - ContainerBarTests
+        - ContainerAppTests
     profile:
       config: Release
     analyze:

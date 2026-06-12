@@ -1,4 +1,4 @@
-# ContainerBar
+# ContainerApp
 
 A native macOS menu-bar app and dashboard for [Apple's `container` CLI](https://github.com/apple/container). Inspect, control, and shell into containers without leaving the menu bar.
 
@@ -45,13 +45,13 @@ brew install xcodegen
 
 # Generate the project and build
 xcodegen generate
-xcodebuild -scheme ContainerBar -destination 'platform=macOS,arch=arm64' build
+xcodebuild -scheme ContainerApp -destination 'platform=macOS,arch=arm64' build
 ```
 
 ### Running tests
 
 ```bash
-xcodebuild -scheme ContainerBar -destination 'platform=macOS,arch=arm64' test
+xcodebuild -scheme ContainerApp -destination 'platform=macOS,arch=arm64' test
 ```
 
 The test suite includes:
@@ -62,8 +62,8 @@ The test suite includes:
 Run a single suite:
 
 ```bash
-xcodebuild -scheme ContainerBar -destination 'platform=macOS,arch=arm64' \
-  test -only-testing:ContainerBarTests/ContainerCLIModelsTests
+xcodebuild -scheme ContainerApp -destination 'platform=macOS,arch=arm64' \
+  test -only-testing:ContainerAppTests/ContainerCLIModelsTests
 ```
 
 ## Distribution
@@ -86,8 +86,8 @@ View → ContainersViewModel → ContainerRuntime → container CLI
 ## Project layout
 
 ```
-ContainerBar/
-  ContainerBarApp.swift          # app entry point, scene declarations
+ContainerApp/
+  ContainerAppApp.swift          # app entry point, scene declarations
   Models/                        # ContainerSummary, ContainerState, ContainerStats, …
   Runtime/                       # ContainerRuntime protocol + CLI/mock implementations
   ViewModels/ContainersViewModel.swift
@@ -96,7 +96,7 @@ ContainerBar/
     Dashboard/                   # window views (sidebar, table, detail panel, tabs)
     Shared/                      # ErrorBannerView, EmptyStateView, state colours
   Utilities/TerminalLauncher.swift
-ContainerBarTests/               # Swift Testing suites
+ContainerAppTests/               # Swift Testing suites
 Fixtures/                        # captured real CLI output (backs decoder tests)
 project.yml                      # XcodeGen spec — edit this, not the .xcodeproj
 ```
@@ -104,12 +104,12 @@ project.yml                      # XcodeGen spec — edit this, not the .xcodepr
 ## Contributing
 
 1. Edit `project.yml` for build-setting changes or new targets; run `xcodegen generate` afterwards.
-2. New source files under `ContainerBar/` are picked up automatically by the target glob.
+2. New source files under `ContainerApp/` are picked up automatically by the target glob.
 3. When updating the CLI version, re-capture fixture output and update `Fixtures/README.md`.
 4. Known non-blocking issues are tracked in `CURRENT_ISSUES.md`.
 
 ## License
 
-ContainerBar is released under the [MIT License](LICENSE).
+ContainerApp is released under the [MIT License](LICENSE).
 
-ContainerBar is an independent, standalone UI application and is **not affiliated with or endorsed by Apple**. It interacts with [Apple's `container` project](https://github.com/apple/container) (licensed under [Apache License 2.0](https://github.com/apple/container/blob/main/LICENSE)) solely by invoking the separately installed `container` CLI as an external process — no Apple `container` code is linked, embedded, or redistributed in this repository or in the built app, so its Apache 2.0 terms do not extend to this codebase. If a future release ever bundles the `container` binary inside the app, that release must ship Apple's Apache 2.0 license text and NOTICE file alongside it.
+ContainerApp is an independent, standalone UI application and is **not affiliated with or endorsed by Apple**. It interacts with [Apple's `container` project](https://github.com/apple/container) (licensed under [Apache License 2.0](https://github.com/apple/container/blob/main/LICENSE)) solely by invoking the separately installed `container` CLI as an external process — no Apple `container` code is linked, embedded, or redistributed in this repository or in the built app, so its Apache 2.0 terms do not extend to this codebase. If a future release ever bundles the `container` binary inside the app, that release must ship Apple's Apache 2.0 license text and NOTICE file alongside it.

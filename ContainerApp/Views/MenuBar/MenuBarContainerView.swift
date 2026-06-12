@@ -153,7 +153,7 @@ struct MenuBarContainerView: View {
                 Button {
                     NSApplication.shared.terminate(nil)
                 } label: {
-                    Label("Quit ContainerBar", systemImage: "power")
+                    Label("Quit ContainerApp", systemImage: "power")
                         .menuRowLabel()
                 }
                 .buttonStyle(.plain)

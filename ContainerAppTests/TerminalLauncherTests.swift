@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import ContainerBar
+@testable import ContainerApp
 
 // MARK: - TerminalLauncher unit tests
 //
