@@ -21,8 +21,7 @@ struct ComposeProject: Identifiable, Hashable, Sendable {
     /// (dots are NOT replaced — this is for display only).
     let displayName: String
 
-    /// Service names in YAML declaration order (alphabetically sorted when YAML
-    /// dictionary decoding loses insertion order).
+    /// Service names in YAML declaration order.
     let serviceNames: [String]
 
     /// Raw image reference per service, as written in the compose file.
@@ -30,9 +29,34 @@ struct ComposeProject: Identifiable, Hashable, Sendable {
     /// Used for display only — never passed to the CLI.
     let serviceImages: [String: String]
 
+    /// Direct dependencies per service, as declared by `depends_on:` in the compose file.
+    /// Keys are service names; values are the service names that key depends on.
+    /// Both the string-array form (`depends_on: [db, cache]`) and the map form
+    /// (`depends_on: { db: { condition: service_healthy } }`) are parsed — keys only
+    /// for the map form.  Services with no `depends_on:` entry are absent from the map.
+    let serviceDependencies: [String: [String]]
+
     /// `true` when the registered file could not be found on disk at last parse.
     /// The row shows a warning icon; all actions except Remove are disabled.
     var isMissing: Bool = false
+
+    init(
+        id: String,
+        fileURL: URL,
+        projectName: String,
+        displayName: String,
+        serviceNames: [String],
+        serviceImages: [String: String],
+        serviceDependencies: [String: [String]] = [:]
+    ) {
+        self.id = id
+        self.fileURL = fileURL
+        self.projectName = projectName
+        self.displayName = displayName
+        self.serviceNames = serviceNames
+        self.serviceImages = serviceImages
+        self.serviceDependencies = serviceDependencies
+    }
 }
 
 /// The live status of one service within a compose project, derived by matching

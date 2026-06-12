@@ -8,3 +8,6 @@ services:
 
   db:
     image: postgres:16
+
+  cache:
+    image: redis:7
