@@ -10,6 +10,12 @@ A native macOS menu-bar app and dashboard for [Apple's `container` CLI](https://
 
 - macOS 26 or later (required by Apple's `container` runtime)
 - Apple `container` CLI 1.0.0 or later (`container system status` must exit successfully)
+- `container-compose` CLI (optional — required for the Compose section only):
+  ```bash
+  brew install container-compose
+  ```
+  The app shows an install prompt in the Compose section when the binary is not found. A custom
+  path can be set in Settings.
 
 The app shells out to the `container` binary — there is no daemon or framework binding. It expects the binary at `/usr/local/bin/container` (the official package location), `/opt/homebrew/bin/container`, or a custom path configured in Settings.
 
@@ -41,8 +47,17 @@ brew install --cask open-southeners/tap/container-app
   - **Stats** — CPU % and memory
 - Actions: **Stop**, **Kill**, **Delete**, **Prune**, **Open Shell**
 
+### Compose projects
+- Register docker-compose files via a file picker; projects persist across launches
+- Per-project and per-service **Up**, **Down** (stops containers, does not remove them), and **Build** actions
+- Live per-service status derived from `container list` by matching the `<project>-<service>` naming convention
+- Last command output panel for each project
+- "Show Container" shortcut links compose services into the existing detail panel (logs, stats, inspect)
+- Full-area install prompt with `brew install container-compose` instruction when the binary is missing
+
 ### Settings
 - Custom CLI path override (persisted via `@AppStorage`)
+- Custom `container-compose` CLI path override
 
 ## Building
 
@@ -87,6 +102,9 @@ View → ContainersViewModel → ContainerRuntime → container CLI
 
 - **`ContainerRuntime`** — `Sendable` protocol; two implementations: `ContainerCLIRuntime` (real) and `MockContainerRuntime` (canned data for UI work without a live CLI).
 - **`ContainerCLIRuntime`** — shells out via `ProcessRunner`. Discovers the binary in order: UserDefaults override → `/usr/local/bin` → `/opt/homebrew/bin` → `which`. Non-zero exits are mapped to typed errors (`cliNotFound`, `systemNotRunning`, `commandFailed`, `decodingFailed`); raw stderr is never shown in the UI.
+- **`ComposeRuntime`** / **`ContainerComposeCLIRuntime`** — separate seam for `container-compose`. Own binary discovery chain keyed by `containerComposeCLIPath` in UserDefaults. `down` is absent by design (see CLAUDE.md); stop/teardown uses `ContainerRuntime.stop(id:)` on matched containers.
+- **`ComposeFileParser`** — parses compose YAML with Yams (the app's first SwiftPM dependency) to get accurate service lists before first `up`. Lenient: unknown keys ignored, null service bodies allowed.
+- **`ComposeProjectStore`** — persists registered compose-file paths in UserDefaults (`composeProjectPaths`).
 - **`ProcessRunner`** — wraps `Foundation.Process`. Reads stdout and stderr concurrently to prevent pipe-buffer deadlocks; sets stdin to `/dev/null` so interactive prompts fail fast.
 - **DTO layer** (`ContainerCLIModels.swift`) — mirrors the CLI JSON with all-optional fields (tolerates unknown future keys), maps to flat UI models (`ContainerSummary`, `ContainerStats`). Container id doubles as name.
 - **Stats** — `container stats` reports cumulative `cpuUsageUsec`; CPU % is derived from the delta between two samples in `ContainersViewModel.mergeStats`.
@@ -98,13 +116,13 @@ View → ContainersViewModel → ContainerRuntime → container CLI
 ContainerApp/
   ContainerAppApp.swift          # app entry point, scene declarations
   Models/                        # ContainerSummary, ContainerState, ContainerStats, …
-  Runtime/                       # ContainerRuntime protocol + CLI/mock implementations
+  Runtime/                       # ContainerRuntime + ComposeRuntime protocols + CLI/mock implementations
   ViewModels/ContainersViewModel.swift
   Views/
     MenuBar/                     # popover views
-    Dashboard/                   # window views (sidebar, table, detail panel, tabs)
+    Dashboard/                   # window views (sidebar, table, detail panel, tabs, compose)
     Shared/                      # ErrorBannerView, EmptyStateView, state colours
-  Utilities/TerminalLauncher.swift
+  Utilities/                     # TerminalLauncher, ComposeFileParser, ComposeProjectStore
 ContainerAppTests/               # Swift Testing suites
 Fixtures/                        # captured real CLI output (backs decoder tests)
 project.yml                      # XcodeGen spec — edit this, not the .xcodeproj
