@@ -749,12 +749,13 @@ final class ContainersViewModel {
     ///   post-action state without polling.
     @discardableResult
     func upProject(_ project: ComposeProject, rebuild: Bool, noCache: Bool) -> Task<Void, Never> {
-        composeAction(project) {
+        composeAction(project) { progress in
             try await self.composeRuntime.up(
                 project: project,
                 services: [],
                 rebuild: rebuild,
-                noCache: noCache
+                noCache: noCache,
+                progress: progress
             )
         }
     }
@@ -765,11 +766,12 @@ final class ContainersViewModel {
     ///   post-action state without polling.
     @discardableResult
     func buildProject(_ project: ComposeProject) -> Task<Void, Never> {
-        composeAction(project) {
+        composeAction(project) { progress in
             try await self.composeRuntime.build(
                 project: project,
                 services: [],
-                noCache: false
+                noCache: false,
+                progress: progress
             )
         }
     }
@@ -800,7 +802,7 @@ final class ContainersViewModel {
                 return statusMap[status]?.id
             }
 
-        return composeAction(project) {
+        return composeAction(project) { _ in
             var stopped = 0
             for id in runningIDs {
                 try await self.runtime.stop(id: id)
@@ -816,12 +818,13 @@ final class ContainersViewModel {
     ///   post-action state without polling.
     @discardableResult
     func upService(_ name: String, in project: ComposeProject) -> Task<Void, Never> {
-        composeAction(project) {
+        composeAction(project) { progress in
             try await self.composeRuntime.up(
                 project: project,
                 services: [name],
                 rebuild: false,
-                noCache: false
+                noCache: false,
+                progress: progress
             )
         }
     }
@@ -849,7 +852,7 @@ final class ContainersViewModel {
         // Stop running dependents first, then the target service.
         let stopOrder = dependents + [name]
 
-        return composeAction(project) {
+        return composeAction(project) { _ in
             var stopped = 0
             for svc in stopOrder {
                 if let status = statusMap[svc], status.state == .running {
@@ -881,15 +884,21 @@ final class ContainersViewModel {
     @discardableResult
     private func composeAction(
         _ project: ComposeProject,
-        work: @escaping @Sendable () async throws -> String
+        work: @escaping @Sendable (@escaping ComposeProgressHandler) async throws -> String
     ) -> Task<Void, Never> {
         guard !busyComposeProjects.contains(project.id) else {
             return Task {}
         }
         busyComposeProjects.insert(project.id)
+        lastComposeOutput = ""
         return Task {
             do {
-                let output = try await work()
+                let output = try await work { output in
+                    Task { @MainActor [weak self] in
+                        guard let self, self.busyComposeProjects.contains(project.id) else { return }
+                        self.lastComposeOutput = output
+                    }
+                }
                 lastComposeOutput = output.trimmingCharacters(in: .whitespacesAndNewlines)
                 errorMessage = nil
                 busyComposeProjects.remove(project.id)

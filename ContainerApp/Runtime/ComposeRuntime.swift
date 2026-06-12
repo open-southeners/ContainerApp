@@ -1,5 +1,7 @@
 import Foundation
 
+typealias ComposeProgressHandler = @Sendable (String) -> Void
+
 // MARK: - ComposeRuntime
 
 /// Abstraction over the `container-compose` binary.
@@ -19,12 +21,23 @@ protocol ComposeRuntime: Sendable {
     /// directory.  Always runs detached (`-d`) so the call completes after services start.
     ///
     /// - Returns: Trimmed, ANSI-stripped stdout for the per-project "last output" panel.
-    func up(project: ComposeProject, services: [String], rebuild: Bool, noCache: Bool) async throws -> String
+    func up(
+        project: ComposeProject,
+        services: [String],
+        rebuild: Bool,
+        noCache: Bool,
+        progress: @escaping ComposeProgressHandler
+    ) async throws -> String
 
     /// `container-compose build [--no-cache] [services…]`
     ///
     /// - Returns: Trimmed, ANSI-stripped stdout for the per-project "last output" panel.
-    func build(project: ComposeProject, services: [String], noCache: Bool) async throws -> String
+    func build(
+        project: ComposeProject,
+        services: [String],
+        noCache: Bool,
+        progress: @escaping ComposeProgressHandler
+    ) async throws -> String
 
     /// `container-compose --version` — availability probe.
     ///

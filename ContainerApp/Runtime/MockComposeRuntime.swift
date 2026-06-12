@@ -39,7 +39,14 @@ final class MockComposeRuntime: ComposeRuntime {
     /// the mock store with `.running` state if it does not already exist, or
     /// transitioned to `.running` if it was previously stopped/exited.
     /// Throws `failNextUp` (when set at init) before performing any store mutations.
-    func up(project: ComposeProject, services: [String], rebuild: Bool, noCache: Bool) async throws -> String {
+    func up(
+        project: ComposeProject,
+        services: [String],
+        rebuild: Bool,
+        noCache: Bool,
+        progress: @escaping ComposeProgressHandler
+    ) async throws -> String {
+        progress("Resolving services…")
         try await Task.sleep(for: .milliseconds(300))
 
         if let error = failNextUp {
@@ -77,12 +84,20 @@ final class MockComposeRuntime: ComposeRuntime {
             project.serviceContainerNames[$0] ?? "\(project.projectName)-\($0)"
         }
         let lines = containerIDs.map { "\($0): started" }.joined(separator: "\n")
+        progress(lines)
         return lines.isEmpty ? "No services to start." : lines
     }
 
     /// Returns a canned build success line.
-    func build(project: ComposeProject, services: [String], noCache: Bool) async throws -> String {
+    func build(
+        project: ComposeProject,
+        services: [String],
+        noCache: Bool,
+        progress: @escaping ComposeProgressHandler
+    ) async throws -> String {
+        progress("Building…")
         try await Task.sleep(for: .milliseconds(300))
+        progress("Build complete (mock).")
         return "Build complete (mock)."
     }
 

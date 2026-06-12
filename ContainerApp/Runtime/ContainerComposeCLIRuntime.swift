@@ -265,14 +265,16 @@ final class ContainerComposeCLIRuntime: ComposeRuntime {
     /// returning the raw result.
     private func run(
         _ arguments: [String],
-        currentDirectoryURL: URL?
+        currentDirectoryURL: URL?,
+        outputHandler: ProcessOutputHandler? = nil
     ) async throws -> ProcessResult {
         let binaryURL = try await resolvedBinaryURL()
         return try await runner.run(
             executableURL: binaryURL,
             arguments: arguments,
             environment: nil,
-            currentDirectoryURL: currentDirectoryURL
+            currentDirectoryURL: currentDirectoryURL,
+            outputHandler: outputHandler
         )
     }
 
@@ -281,9 +283,32 @@ final class ContainerComposeCLIRuntime: ComposeRuntime {
     @discardableResult
     private func runChecked(
         _ arguments: [String],
-        currentDirectoryURL: URL?
+        currentDirectoryURL: URL?,
+        progress: ComposeProgressHandler? = nil
     ) async throws -> String {
-        let result = try await run(arguments, currentDirectoryURL: currentDirectoryURL)
+        final class OutputAccumulator: @unchecked Sendable {
+            private var output = ""
+            private let lock = NSLock()
+
+            func append(_ chunk: String) -> String {
+                lock.withLock {
+                    output += chunk
+                    return output
+                }
+            }
+        }
+
+        let accumulator = OutputAccumulator()
+        let result = try await run(
+            arguments,
+            currentDirectoryURL: currentDirectoryURL
+        ) { chunk in
+            let output = accumulator.append(chunk)
+            progress?(
+                String.strippingANSIEscapes(output)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+        }
         let strippedStdout = String.strippingANSIEscapes(result.stdout)
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -327,23 +352,42 @@ final class ContainerComposeCLIRuntime: ComposeRuntime {
     // MARK: - ComposeRuntime
 
     /// `container-compose up -d [-b] [--no-cache] [services…]`
-    func up(project: ComposeProject, services: [String], rebuild: Bool, noCache: Bool) async throws -> String {
+    func up(
+        project: ComposeProject,
+        services: [String],
+        rebuild: Bool,
+        noCache: Bool,
+        progress: @escaping ComposeProgressHandler
+    ) async throws -> String {
         var args = fileArguments(for: project)
         args.append("up")
         args.append("-d")
         if rebuild { args.append("-b") }
         if noCache { args.append("--no-cache") }
         args.append(contentsOf: services)
-        return try await runChecked(args, currentDirectoryURL: projectCWD(for: project))
+        return try await runChecked(
+            args,
+            currentDirectoryURL: projectCWD(for: project),
+            progress: progress
+        )
     }
 
     /// `container-compose build [--no-cache] [services…]`
-    func build(project: ComposeProject, services: [String], noCache: Bool) async throws -> String {
+    func build(
+        project: ComposeProject,
+        services: [String],
+        noCache: Bool,
+        progress: @escaping ComposeProgressHandler
+    ) async throws -> String {
         var args = fileArguments(for: project)
         args.append("build")
         if noCache { args.append("--no-cache") }
         args.append(contentsOf: services)
-        return try await runChecked(args, currentDirectoryURL: projectCWD(for: project))
+        return try await runChecked(
+            args,
+            currentDirectoryURL: projectCWD(for: project),
+            progress: progress
+        )
     }
 
     /// `container-compose --version` — availability probe.

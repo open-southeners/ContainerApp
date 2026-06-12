@@ -8,6 +8,8 @@ struct ProcessResult: Sendable {
     let exitCode: Int32
 }
 
+typealias ProcessOutputHandler = @Sendable (String) -> Void
+
 // MARK: - ProcessRunning protocol
 
 protocol ProcessRunning: Sendable {
@@ -15,7 +17,8 @@ protocol ProcessRunning: Sendable {
         executableURL: URL,
         arguments: [String],
         environment: [String: String]?,
-        currentDirectoryURL: URL?
+        currentDirectoryURL: URL?,
+        outputHandler: ProcessOutputHandler?
     ) async throws -> ProcessResult
 }
 
@@ -33,7 +36,23 @@ extension ProcessRunning {
             executableURL: executableURL,
             arguments: arguments,
             environment: environment,
-            currentDirectoryURL: nil
+            currentDirectoryURL: nil,
+            outputHandler: nil
+        )
+    }
+
+    func run(
+        executableURL: URL,
+        arguments: [String],
+        environment: [String: String]?,
+        currentDirectoryURL: URL?
+    ) async throws -> ProcessResult {
+        try await run(
+            executableURL: executableURL,
+            arguments: arguments,
+            environment: environment,
+            currentDirectoryURL: currentDirectoryURL,
+            outputHandler: nil
         )
     }
 }
@@ -51,7 +70,8 @@ struct ProcessRunner: ProcessRunning {
         executableURL: URL,
         arguments: [String],
         environment: [String: String]?,
-        currentDirectoryURL: URL? = nil
+        currentDirectoryURL: URL? = nil,
+        outputHandler: ProcessOutputHandler? = nil
     ) async throws -> ProcessResult {
         try await withCheckedThrowingContinuation { continuation in
             // Buffer accumulator: a reference type whose mutation is serialised by
@@ -113,6 +133,9 @@ struct ProcessRunner: ProcessRunning {
                 let chunk = handle.availableData
                 if !chunk.isEmpty {
                     stdoutBuffer.append(chunk)
+                    if let text = String(data: chunk, encoding: .utf8) {
+                        outputHandler?(text)
+                    }
                 }
             }
 
@@ -120,6 +143,9 @@ struct ProcessRunner: ProcessRunning {
                 let chunk = handle.availableData
                 if !chunk.isEmpty {
                     stderrBuffer.append(chunk)
+                    if let text = String(data: chunk, encoding: .utf8) {
+                        outputHandler?(text)
+                    }
                 }
             }
 
