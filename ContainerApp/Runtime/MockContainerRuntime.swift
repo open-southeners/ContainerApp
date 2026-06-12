@@ -2,12 +2,21 @@ import Foundation
 
 // MARK: - Canned state (actor-isolated for Swift 6 Sendable correctness)
 
-private actor MockStore {
+actor MockStore {
     var containers: [ContainerSummary] = MockContainerRuntime.seedContainers
     var images: [ImageSummary] = MockContainerRuntime.seedImages
 
     func list() -> [ContainerSummary] { containers }
     func listImages() -> [ImageSummary] { images }
+
+    /// Inserts `container` into the store, or replaces an existing entry with the same id.
+    func add(_ container: ContainerSummary) {
+        if let idx = containers.firstIndex(where: { $0.id == container.id }) {
+            containers[idx] = container
+        } else {
+            containers.append(container)
+        }
+    }
 
     func start(id: String) {
         containers = containers.map { c in
@@ -80,7 +89,8 @@ private actor MockStore {
 /// Phase-1 mock that returns canned containers and simulates ~200 ms network latency.
 /// Mutating actions (stop / kill / delete) update the in-memory store so the UI reacts.
 final class MockContainerRuntime: ContainerRuntime {
-    private let store = MockStore()
+    /// Exposed so `MockComposeRuntime` can add/start containers named `<project>-<service>`.
+    let store = MockStore()
 
     // Seed data is static so it can be referenced before `self` is available.
     fileprivate static let seedContainers: [ContainerSummary] = {
