@@ -305,6 +305,8 @@ final class ContainersViewModel {
         do {
             let freshStats = try await runtime.stats(id: nil)
             mergeStats(freshStats)
+            // Re-run in-use marking so images reflect the latest container list.
+            images = Self.markInUse(images, containers: containers)
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
@@ -486,6 +488,35 @@ final class ContainersViewModel {
         }
     }
 
+    // MARK: Duplicate project name detection
+
+    /// Project names that appear on two or more non-missing compose projects.
+    ///
+    /// Two registered projects that share the same `projectName` derive identical
+    /// container ids (`<project>-<service>`), causing silent container-id collisions.
+    /// Missing-file stubs are excluded: they produce no containers so they cannot
+    /// collide with anything.
+    ///
+    /// Computed as a convenience over `detectDuplicateProjectNames` so that SwiftUI
+    /// views can read it as a plain property with no extra bookkeeping.
+    var duplicateProjectNames: Set<String> {
+        Self.detectDuplicateProjectNames(composeProjects)
+    }
+
+    /// Pure, testable helper: returns the set of project names that appear on two or
+    /// more non-missing projects in `projects`.
+    ///
+    /// - Parameter projects: The full compose project list to inspect.
+    /// - Returns: Project names where the count of non-missing projects sharing that
+    ///   name is ≥ 2.  Returns an empty set when there are no duplicates.
+    nonisolated static func detectDuplicateProjectNames(_ projects: [ComposeProject]) -> Set<String> {
+        var counts: [String: Int] = [:]
+        for project in projects where !project.isMissing {
+            counts[project.projectName, default: 0] += 1
+        }
+        return Set(counts.filter { $0.value >= 2 }.keys)
+    }
+
     // MARK: Central error handler
 
     /// Routes runtime errors to the appropriate system-status / error-message state.
@@ -498,6 +529,7 @@ final class ContainersViewModel {
                 errorMessage = nil
                 containers = []
                 stats = []
+                images = []
                 // composeProjects comes from disk — do not clear it here.
                 return
             case .systemNotRunning:
@@ -505,6 +537,7 @@ final class ContainersViewModel {
                 errorMessage = nil
                 containers = []
                 stats = []
+                images = []
                 // composeProjects comes from disk — do not clear it here.
                 return
             case .composeCLINotFound:
@@ -690,124 +723,177 @@ final class ContainersViewModel {
     ///
     /// The underlying work is launched in a fire-and-forget `Task` so image pulls
     /// (which can take minutes) do not block refresh or other UI interaction.
-    /// On completion, `lastComposeOutput` is set to the trimmed CLI stdout, the
-    /// project is removed from `busyComposeProjects`, and a quiet refresh runs.
-    func upProject(_ project: ComposeProject) {
+    /// On success, `lastComposeOutput` is set to the trimmed CLI stdout and a quiet
+    /// refresh runs.  On failure, the quiet refresh runs first so container state is
+    /// up to date before `errorMessage` is set — ensuring the error survives the refresh.
+    ///
+    /// - Returns: The underlying `Task` (discardable).  Tests may `await` it to observe
+    ///   post-action state without polling.
+    @discardableResult
+    func upProject(_ project: ComposeProject) -> Task<Void, Never> {
         upProject(project, rebuild: false, noCache: false)
     }
 
     /// Runs `container-compose up -d` for all services, with optional rebuild/no-cache.
-    func upProject(_ project: ComposeProject, rebuild: Bool, noCache: Bool) {
-        guard !busyComposeProjects.contains(project.id) else { return }
-        busyComposeProjects.insert(project.id)
-        Task {
-            do {
-                let output = try await composeRuntime.up(
-                    project: project,
-                    services: [],
-                    rebuild: rebuild,
-                    noCache: noCache
-                )
-                lastComposeOutput = output.trimmingCharacters(in: .whitespacesAndNewlines)
-                errorMessage = nil
-            } catch {
-                handle(error)
-            }
-            busyComposeProjects.remove(project.id)
-            await refresh(quiet: true)
+    ///
+    /// - Returns: The underlying `Task` (discardable).  Tests may `await` it to observe
+    ///   post-action state without polling.
+    @discardableResult
+    func upProject(_ project: ComposeProject, rebuild: Bool, noCache: Bool) -> Task<Void, Never> {
+        composeAction(project) {
+            try await self.composeRuntime.up(
+                project: project,
+                services: [],
+                rebuild: rebuild,
+                noCache: noCache
+            )
         }
     }
 
     /// Runs `container-compose build` for all services in `project`.
-    func buildProject(_ project: ComposeProject) {
-        guard !busyComposeProjects.contains(project.id) else { return }
-        busyComposeProjects.insert(project.id)
-        Task {
-            do {
-                let output = try await composeRuntime.build(
-                    project: project,
-                    services: [],
-                    noCache: false
-                )
-                lastComposeOutput = output.trimmingCharacters(in: .whitespacesAndNewlines)
-                errorMessage = nil
-            } catch {
-                handle(error)
-            }
-            busyComposeProjects.remove(project.id)
-            await refresh(quiet: true)
+    ///
+    /// - Returns: The underlying `Task` (discardable).  Tests may `await` it to observe
+    ///   post-action state without polling.
+    @discardableResult
+    func buildProject(_ project: ComposeProject) -> Task<Void, Never> {
+        composeAction(project) {
+            try await self.composeRuntime.build(
+                project: project,
+                services: [],
+                noCache: false
+            )
         }
     }
 
     /// Stops all running containers for `project` by calling `ContainerRuntime.stop(id:)`
-    /// on each matched container in **reverse** service-declaration order.
+    /// on each matched container in dependency-aware stop order (dependents before
+    /// their dependencies, reverse YAML order for services with no dependencies).
     ///
     /// Does NOT call `ComposeRuntime` — `container-compose down` 0.12.0 has an XPC
     /// protocol mismatch with container runtime 1.0.0.  Native `container stop` is used
     /// instead (verified working on compose-created containers).
-    func downProject(_ project: ComposeProject) {
-        guard !busyComposeProjects.contains(project.id) else { return }
-        busyComposeProjects.insert(project.id)
-        Task {
-            // Derive the running containers for this project in reverse service order.
-            let statuses = Self.serviceStatuses(for: project, containers: containers)
-            let runningIDs = statuses
-                .reversed()
-                .filter { $0.state == .running }
-                .map(\.id)
+    ///
+    /// - Returns: The underlying `Task` (discardable).  Tests may `await` it to observe
+    ///   post-action state without polling.
+    @discardableResult
+    func downProject(_ project: ComposeProject) -> Task<Void, Never> {
+        // Derive the running containers for this project in dependency-aware stop order.
+        // Snapshot containers on the MainActor before crossing into the Task closure.
+        let stopOrderNames = ComposeFileParser.stopOrder(
+            serviceNames: project.serviceNames,
+            dependencies: project.serviceDependencies
+        )
+        let statuses = Self.serviceStatuses(for: project, containers: containers)
+        let statusMap = Dictionary(uniqueKeysWithValues: statuses.map { ($0.id, $0) })
+        let runningIDs = stopOrderNames
+            .map { "\(project.projectName)-\($0)" }
+            .filter { statusMap[$0]?.state == .running }
+
+        return composeAction(project) {
+            var stopped = 0
             for id in runningIDs {
-                do {
-                    try await runtime.stop(id: id)
-                } catch {
-                    handle(error)
-                }
+                try await self.runtime.stop(id: id)
+                stopped += 1
             }
-            busyComposeProjects.remove(project.id)
-            await refresh(quiet: true)
+            return stopped == 1 ? "Stopped 1 service" : "Stopped \(stopped) services"
         }
     }
 
     /// Runs `container-compose up -d` for a single service within `project`.
-    func upService(_ name: String, in project: ComposeProject) {
-        guard !busyComposeProjects.contains(project.id) else { return }
-        busyComposeProjects.insert(project.id)
-        Task {
-            do {
-                let output = try await composeRuntime.up(
-                    project: project,
-                    services: [name],
-                    rebuild: false,
-                    noCache: false
-                )
-                lastComposeOutput = output.trimmingCharacters(in: .whitespacesAndNewlines)
-                errorMessage = nil
-            } catch {
-                handle(error)
-            }
-            busyComposeProjects.remove(project.id)
-            await refresh(quiet: true)
+    ///
+    /// - Returns: The underlying `Task` (discardable).  Tests may `await` it to observe
+    ///   post-action state without polling.
+    @discardableResult
+    func upService(_ name: String, in project: ComposeProject) -> Task<Void, Never> {
+        composeAction(project) {
+            try await self.composeRuntime.up(
+                project: project,
+                services: [name],
+                rebuild: false,
+                noCache: false
+            )
         }
     }
 
-    /// Stops a single running service container via `ContainerRuntime.stop(id:)`.
+    /// Stops a single running service container, stopping direct dependents first.
+    ///
+    /// Before stopping `name`, any other services in `project` that directly depend on
+    /// `name` (per `project.serviceDependencies`) and are currently running are stopped
+    /// first — direct dependents only (not transitive).
     ///
     /// Does NOT call `ComposeRuntime` — see `downProject(_:)` for the rationale.
-    func downService(_ name: String, in project: ComposeProject) {
-        guard !busyComposeProjects.contains(project.id) else { return }
-        busyComposeProjects.insert(project.id)
-        Task {
-            let expectedID = "\(project.projectName)-\(name)"
-            let statuses = Self.serviceStatuses(for: project, containers: containers)
-            if let status = statuses.first(where: { $0.id == expectedID }),
-               status.state == .running {
-                do {
-                    try await runtime.stop(id: expectedID)
-                } catch {
-                    handle(error)
+    ///
+    /// - Returns: The underlying `Task` (discardable).  Tests may `await` it to observe
+    ///   post-action state without polling.
+    @discardableResult
+    func downService(_ name: String, in project: ComposeProject) -> Task<Void, Never> {
+        // Snapshot containers on the MainActor before crossing into the Task closure.
+        let statuses = Self.serviceStatuses(for: project, containers: containers)
+        let statusMap = Dictionary(uniqueKeysWithValues: statuses.map { ($0.id, $0) })
+
+        // Collect direct dependents: services whose `depends_on` includes `name`.
+        let dependents = project.serviceNames.filter { svc in
+            svc != name && (project.serviceDependencies[svc] ?? []).contains(name)
+        }
+        // Stop running dependents first, then the target service.
+        let stopOrder = dependents + [name]
+
+        return composeAction(project) {
+            var stopped = 0
+            for svc in stopOrder {
+                let id = "\(project.projectName)-\(svc)"
+                if statusMap[id]?.state == .running {
+                    try await self.runtime.stop(id: id)
+                    stopped += 1
                 }
             }
-            busyComposeProjects.remove(project.id)
-            await refresh(quiet: true)
+            return stopped == 1 ? "Stopped 1 service" : "Stopped \(stopped) services"
+        }
+    }
+
+    // MARK: Compose action helper
+
+    /// Shared scaffold for fire-and-forget compose actions that produce CLI output.
+    ///
+    /// Marks `project` as busy, launches a `Task`, and applies the error-visibility
+    /// rule: on **success**, `lastComposeOutput` is set and a quiet refresh follows;
+    /// on **failure**, the quiet refresh runs first (so the container list is up to
+    /// date) and `handle(_:)` is called afterwards so the error message survives the
+    /// refresh.  When the error is `.commandFailed`, its stderr is also stored in
+    /// `lastComposeOutput` so the detail panel's Last Output section shows what the
+    /// CLI printed.
+    ///
+    /// - Parameters:
+    ///   - project: The compose project this action belongs to.
+    ///   - work: An async throwing closure that shells out and returns trimmed stdout.
+    /// - Returns: The underlying `Task` so call sites (e.g. unit tests) can `await`
+    ///   completion without polling.  Production callers discard the return value.
+    @discardableResult
+    private func composeAction(
+        _ project: ComposeProject,
+        work: @escaping @Sendable () async throws -> String
+    ) -> Task<Void, Never> {
+        guard !busyComposeProjects.contains(project.id) else {
+            return Task {}
+        }
+        busyComposeProjects.insert(project.id)
+        return Task {
+            do {
+                let output = try await work()
+                lastComposeOutput = output.trimmingCharacters(in: .whitespacesAndNewlines)
+                errorMessage = nil
+                busyComposeProjects.remove(project.id)
+                await refresh(quiet: true)
+            } catch {
+                // Refresh first so container state is fresh before setting errorMessage.
+                busyComposeProjects.remove(project.id)
+                await refresh(quiet: true)
+                // Surface the CLI stderr in the detail panel when available.
+                if case .commandFailed(_, let stderr) = error as? ContainerRuntimeError {
+                    lastComposeOutput = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+                handle(error)
+            }
         }
     }
 
