@@ -456,8 +456,9 @@ final class ContainersViewModel {
 
     // MARK: Compose status derivation
 
-    /// Derives the live status of each service in `project` by matching the expected
-    /// container id (`"<project.projectName>-<serviceName>"`) against `containers`.
+    /// Derives the live status of each service in `project` by matching its explicit
+    /// `container_name`, or the default `"<project.projectName>-<serviceName>"`,
+    /// against `containers`.
     ///
     /// The match is **exact** — a project named `"web"` does NOT claim a container
     /// named `"web-app-cache"` from a different project.  A service with no matching
@@ -477,7 +478,7 @@ final class ContainersViewModel {
         // Build a map for O(1) container lookup by id.
         let containerMap = Dictionary(uniqueKeysWithValues: containers.map { ($0.id, $0) })
         return project.serviceNames.map { serviceName in
-            let expectedID = "\(project.projectName)-\(serviceName)"
+            let expectedID = serviceContainerID(for: serviceName, in: project)
             let matchingContainer = containerMap[expectedID]
             return ComposeServiceStatus(
                 id: expectedID,
@@ -486,6 +487,14 @@ final class ContainersViewModel {
                 state: matchingContainer?.state
             )
         }
+    }
+
+    nonisolated static func serviceContainerID(
+        for serviceName: String,
+        in project: ComposeProject
+    ) -> String {
+        project.serviceContainerNames[serviceName]
+            ?? "\(project.projectName)-\(serviceName)"
     }
 
     // MARK: Duplicate project name detection
@@ -784,10 +793,12 @@ final class ContainersViewModel {
             dependencies: project.serviceDependencies
         )
         let statuses = Self.serviceStatuses(for: project, containers: containers)
-        let statusMap = Dictionary(uniqueKeysWithValues: statuses.map { ($0.id, $0) })
+        let statusMap = Dictionary(uniqueKeysWithValues: statuses.map { ($0.serviceName, $0) })
         let runningIDs = stopOrderNames
-            .map { "\(project.projectName)-\($0)" }
-            .filter { statusMap[$0]?.state == .running }
+            .compactMap { status -> String? in
+                guard statusMap[status]?.state == .running else { return nil }
+                return statusMap[status]?.id
+            }
 
         return composeAction(project) {
             var stopped = 0
@@ -829,7 +840,7 @@ final class ContainersViewModel {
     func downService(_ name: String, in project: ComposeProject) -> Task<Void, Never> {
         // Snapshot containers on the MainActor before crossing into the Task closure.
         let statuses = Self.serviceStatuses(for: project, containers: containers)
-        let statusMap = Dictionary(uniqueKeysWithValues: statuses.map { ($0.id, $0) })
+        let statusMap = Dictionary(uniqueKeysWithValues: statuses.map { ($0.serviceName, $0) })
 
         // Collect direct dependents: services whose `depends_on` includes `name`.
         let dependents = project.serviceNames.filter { svc in
@@ -841,9 +852,8 @@ final class ContainersViewModel {
         return composeAction(project) {
             var stopped = 0
             for svc in stopOrder {
-                let id = "\(project.projectName)-\(svc)"
-                if statusMap[id]?.state == .running {
-                    try await self.runtime.stop(id: id)
+                if let status = statusMap[svc], status.state == .running {
+                    try await self.runtime.stop(id: status.id)
                     stopped += 1
                 }
             }

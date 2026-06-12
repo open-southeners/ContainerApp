@@ -51,7 +51,8 @@ final class MockComposeRuntime: ComposeRuntime {
 
         if let store = mockStore {
             for serviceName in serviceList {
-                let containerID = "\(project.projectName)-\(serviceName)"
+                let containerID = project.serviceContainerNames[serviceName]
+                    ?? "\(project.projectName)-\(serviceName)"
                 let container = ContainerSummary(
                     id: containerID,
                     name: containerID,
@@ -72,7 +73,9 @@ final class MockComposeRuntime: ComposeRuntime {
         }
 
         // Return a canned output resembling real container-compose up -d output.
-        let containerIDs = serviceList.map { "\(project.projectName)-\($0)" }
+        let containerIDs = serviceList.map {
+            project.serviceContainerNames[$0] ?? "\(project.projectName)-\($0)"
+        }
         let lines = containerIDs.map { "\($0): started" }.joined(separator: "\n")
         return lines.isEmpty ? "No services to start." : lines
     }
