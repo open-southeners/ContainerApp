@@ -7,6 +7,7 @@ enum ContainerRuntimeError: Error {
     case commandFailed(exitCode: Int32, stderr: String)
     case decodingFailed(raw: String)
     case cliNotFound
+    case composeCLINotFound
     case systemNotRunning
 }
 
@@ -17,6 +18,9 @@ extension ContainerRuntimeError: LocalizedError {
         switch self {
         case .cliNotFound:
             return "Apple container CLI was not found. Install Apple container, then configure the path in Settings."
+
+        case .composeCLINotFound:
+            return "container-compose was not found. Install it with: brew install container-compose, then configure the path in Settings."
 
         case .systemNotRunning:
             return "Container system is not running."
