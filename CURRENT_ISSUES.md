@@ -8,6 +8,10 @@ Discovered during orchestrated work; not blocking, not yet fixed.
   **What:** The original user report (2026-06-12) — Up on a registered project ticks busy then nothing runs — was caused by *two* layers. The error-visibility layer is fixed (see Resolved): failures now surface in the error banner and the detail panel's Last Output shows the CLI stderr. The *underlying* `container-compose up` failure on that machine is still undiagnosed because it was invisible at the time.
   **Fix:** Re-run the failing scenario on the affected machine with the fixed build; the banner/Last Output will now show the CLI error. First candidates: GUI-spawned environment differences, or a compose file using `build:`-only services.
 
+- **Where:** Compose support (Phase 6), upstream tool constraint — confirmed root cause of the 2026-06-12 user report
+  **What:** `container-compose` (all versions incl. latest main) decodes per-service `networks:` and `depends_on:` strictly as string arrays (`Service.swift` uses `[String]`). The Docker-spec *map* forms (`networks: { net: { aliases: [...] } }`, `depends_on: { db: { condition: … } }`) fail its whole-file decode with `DecodingError.typeMismatch: expected … Sequence … found Node` on `up`/`down`/`build`. The app now surfaces this correctly (post noise-filter fix); the app's own parser is deliberately more lenient, so services render fine and the failure only appears on Up. `container_name:` is parsed but ignored by the tool — naming is always `<project>-<service>`, so status matching is unaffected.
+  **Fix:** Nothing app-side. User-side: convert affected services to the array form (`networks: [name]`), losing `aliases`. Upstream: candidate issue/PR to Mcrich23/Container-Compose to accept both YAML forms.
+
 - **Where:** CI / build invocations (no file yet)
   **What:** `xcodebuild` warns "Using the first of multiple matching destinations" (arm64 vs x86_64 vs Any Mac); non-deterministic destination selection.
   **Fix:** Pass `-destination 'platform=macOS,arch=arm64'` in any scripted/CI build command when CI is added.
