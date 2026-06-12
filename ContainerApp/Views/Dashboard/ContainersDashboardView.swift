@@ -11,6 +11,13 @@ struct ContainersDashboardView: View {
         model.sidebarSelection == .images
     }
 
+    /// `true` when the sidebar is showing the Compose section.
+    /// The Prune toolbar button is hidden for Compose — there is no compose-level
+    /// prune operation; removal is handled per-project inside `ComposeProjectsView`.
+    private var isComposeSection: Bool {
+        model.sidebarSelection == .compose
+    }
+
     var body: some View {
         @Bindable var model = model
         NavigationSplitView {
@@ -56,13 +63,17 @@ struct ContainersDashboardView: View {
 
                 // The Prune button label and confirmation text adapt to the active section:
                 // Images section → prune dangling images; all other sections → prune stopped containers.
-                Button {
-                    isShowingPruneConfirmation = true
-                } label: {
-                    Label(
-                        isImagesSection ? "Prune Images" : "Prune",
-                        systemImage: "trash.slash"
-                    )
+                // Hidden for the Compose section — no compose-level prune operation exists;
+                // project removal is handled inside ComposeProjectsView.
+                if !isComposeSection {
+                    Button {
+                        isShowingPruneConfirmation = true
+                    } label: {
+                        Label(
+                            isImagesSection ? "Prune Images" : "Prune",
+                            systemImage: "trash.slash"
+                        )
+                    }
                 }
             }
         }
