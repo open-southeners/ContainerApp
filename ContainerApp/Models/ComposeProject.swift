@@ -1,0 +1,54 @@
+import Foundation
+
+/// A registered docker-compose project, parsed from a compose YAML file on disk.
+///
+/// `id` is the absolute path of the compose file, which serves as both a stable
+/// table identity and the key used by `ComposeProjectStore`.
+struct ComposeProject: Identifiable, Hashable, Sendable {
+    /// Absolute path of the compose file — stable identity and store key.
+    let id: String
+
+    /// File URL of the compose file.
+    let fileURL: URL
+
+    /// Derived project name used when constructing container IDs (`<project>-<service>`).
+    /// Equals the top-level `name:` field when present; otherwise the folder name with
+    /// `.` replaced by `_` (mirrors `container-compose`'s `deriveProjectName`).
+    let projectName: String
+
+    /// Human-readable project name for the UI.
+    /// Equals the top-level `name:` field when present; otherwise the folder name verbatim
+    /// (dots are NOT replaced — this is for display only).
+    let displayName: String
+
+    /// Service names in YAML declaration order (alphabetically sorted when YAML
+    /// dictionary decoding loses insertion order).
+    let serviceNames: [String]
+
+    /// Raw image reference per service, as written in the compose file.
+    /// May contain unresolved variable expressions such as `${TAG:-latest}`.
+    /// Used for display only — never passed to the CLI.
+    let serviceImages: [String: String]
+
+    /// `true` when the registered file could not be found on disk at last parse.
+    /// The row shows a warning icon; all actions except Remove are disabled.
+    var isMissing: Bool = false
+}
+
+/// The live status of one service within a compose project, derived by matching
+/// the expected container id (`<project>-<service>`) against the running container list.
+struct ComposeServiceStatus: Identifiable, Hashable, Sendable {
+    /// Expected container id: `"<project>-<service>"`.
+    let id: String
+
+    /// Service name as declared in the compose file.
+    let serviceName: String
+
+    /// Raw image reference from the compose YAML (may contain `${VAR:-default}`).
+    /// `nil` when the service had a null body or no `image:` key.
+    let image: String?
+
+    /// State of the matching container in the live container list.
+    /// `nil` means no container with this id exists yet ("not created").
+    let state: ContainerState?
+}

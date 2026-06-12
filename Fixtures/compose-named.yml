@@ -1,0 +1,10 @@
+name: myapp
+
+services:
+  web:
+    image: nginx:latest
+    depends_on:
+      - db
+
+  db:
+    image: postgres:16
