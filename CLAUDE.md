@@ -84,6 +84,28 @@ decoded results flowing back up.
   line — this is injection defense, keep it. `open(command:)` owns the AppleScript side effect;
   first use triggers the macOS Automation consent prompt (declared via
   `NSAppleEventsUsageDescription` in Info.plist).
+- **Compose layer** — compose is a distinct binary with its own seam (`Runtime/ComposeRuntime.swift`):
+  - **`ComposeRuntime`** protocol — `up`/`build`/`version` only. `down` is intentionally absent
+    (see Compose facts below); stop/teardown is handled via `ContainerRuntime.stop(id:)` on
+    matched containers in reverse YAML service order.
+  - **`ContainerComposeCLIRuntime`** — shells out to `container-compose`. Binary discovery mirrors
+    `ContainerCLIRuntime` with its own `BinaryCache` keyed by UserDefaults
+    `containerComposeCLIPath` override → init override → `/usr/local/bin/container-compose` →
+    `/opt/homebrew/bin/container-compose` → `which`. Failure throws
+    `ContainerRuntimeError.composeCLINotFound` (distinct from `.cliNotFound` so the UI shows the
+    brew install hint). Every command sets `currentDirectoryURL` to the compose file's parent
+    folder and passes `-f <filename>`. ANSI escape codes and `\r` progress rewrites are stripped
+    from stdout before the output is surfaced.
+  - **`ComposeFileParser`** (`Utilities/ComposeFileParser.swift`) — uses **Yams** (the app's first
+    SwiftPM dependency, declared in `project.yml`). Pure function `parse(text:fileURL:)` decodes
+    only `name:` + service keys + `image`; all fields lenient/optional (same policy as
+    `CLIContainerDTO`). Service values can be null (bare key). Parse failures throw
+    `ComposeError.parseFailed` with a 200-char preview. Thin `load(fileURL:)` wrapper reads from
+    disk and sets `isMissing = true` when the file is unreadable.
+  - **`ComposeProjectStore`** (`Utilities/ComposeProjectStore.swift`) — persists registered
+    compose-file paths as JSON-encoded `[String]` under UserDefaults key `composeProjectPaths`
+    (takes a `UserDefaults` instance at init; tests use a suite-named instance). Knows paths only;
+    reparsing into `ComposeProject` values is the view model's responsibility.
 
 ## CLI facts worth knowing
 
@@ -108,6 +130,31 @@ decoded results flowing back up.
 
 Captured real CLI output lives in `Fixtures/` (see `Fixtures/README.md` for exact shapes) and
 backs the decoder tests — re-capture if the CLI version changes.
+
+## Compose facts worth knowing
+
+- Subcommands: `up`, `down`, `build`, `version` (plus `--version`). No `ps`, `logs`, `restart`,
+  `pull`, or `stop` — service status comes from `container list` grouping.
+- `up` flags used: `-d` (always detached), `-f <filename>`, `-b` (rebuild), `--no-cache`.
+- **Container naming**: `<project>-<service>` where project = compose `name:` field if present,
+  else the **cwd folder's last path component** with `.` replaced by `_`. Because the project name
+  derives from the process cwd (not the `-f` path), the app always sets `currentDirectoryURL` to
+  the compose file's parent folder *and* passes `-f <filename>` — never pass an absolute path
+  without cwd.
+- **`down` is broken** in the brew formula (0.12.0 vs runtime 1.0.0): XPC protocol mismatch
+  (`DecodingError.typeMismatch … Path: signal`), containers keep running. The app therefore stops
+  containers itself via `ContainerRuntime.stop(id:)` and never calls `container-compose down`.
+  Revisit when the brew formula reaches 1.0.0+.
+- Install: `brew install container-compose` (formula name `container-compose`). As of 2026-06-12
+  the formula ships **0.12.0** while GitHub is at **1.0.0** — do not hard-require a version;
+  `--version` prints `container-compose version X.Y.Z`, captured for display only.
+- Stopped apiserver: `up` exits 1 with stderr `Error: XPC connection error: Connection invalid`.
+  The existing `XPC connection error` phrase mapping covers this; the `container system start`
+  hint does **not** appear (unlike the `container` CLI).
+- stdout from `up`/`build` contains ANSI escape codes (Rainbow) and `\r`-rewritten progress lines.
+  `ContainerComposeCLIRuntime` strips both before storing the output. Pipes usually disable color
+  but the stripping is unconditional.
+- No shell spawned (argv array), so service names from YAML need no quoting or validation.
 
 ## Project docs
 
