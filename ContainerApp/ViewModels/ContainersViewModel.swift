@@ -8,6 +8,7 @@ enum SidebarSection: String, CaseIterable, Hashable {
     case running
     case stopped
     case images
+    case compose
     case settings
 
     var displayName: String {
@@ -16,6 +17,7 @@ enum SidebarSection: String, CaseIterable, Hashable {
         case .running:  return "Running"
         case .stopped:  return "Stopped"
         case .images:   return "Images"
+        case .compose:  return "Compose"
         case .settings: return "Settings"
         }
     }
@@ -26,6 +28,7 @@ enum SidebarSection: String, CaseIterable, Hashable {
         case .running:  return "play.circle"
         case .stopped:  return "stop.circle"
         case .images:   return "externaldrive"
+        case .compose:  return "square.stack.3d.up"
         case .settings: return "gear"
         }
     }
@@ -93,13 +96,50 @@ final class ContainersViewModel {
     /// e.g. `"Reclaimed Zero KB in disk space"`.  Cleared when the user dismisses.
     var pruneSummary: String?
 
+    // MARK: Compose state
+
+    /// All registered compose projects, reparsed from disk on each refresh.
+    var composeProjects: [ComposeProject] = []
+
+    /// The id (absolute compose-file path) of the currently-selected project row.
+    var selectedComposeProjectID: String? {
+        didSet {
+            // Clear stale action output whenever the selection changes so the
+            // detail panel never shows output from a previously-selected project.
+            if selectedComposeProjectID != oldValue {
+                lastComposeOutput = nil
+            }
+        }
+    }
+
+    /// `nil` = not yet probed; `true` = binary found; `false` = binary absent → install prompt.
+    var composeAvailable: Bool?
+
+    /// Version string returned by `container-compose --version`, e.g.
+    /// `"container-compose version 0.12.0"`. Set alongside `composeAvailable`.
+    var composeVersion: String?
+
+    /// Project ids with an in-flight up/down/build action.
+    var busyComposeProjects: Set<String> = []
+
+    /// Trimmed stdout of the last finished compose action, displayed in the detail panel.
+    var lastComposeOutput: String?
+
     let runtime: any ContainerRuntime
+    private let composeRuntime: any ComposeRuntime
+    private let composeStore: ComposeProjectStore
 
     /// Previous CPU sample per container id: (cumulative usec, wall-clock instant).
     private var cpuSamples: [String: (usec: Int64, time: Date)] = [:]
 
-    init(runtime: some ContainerRuntime) {
+    init(
+        runtime: some ContainerRuntime,
+        composeRuntime: some ComposeRuntime = ContainerComposeCLIRuntime(),
+        composeStore: ComposeProjectStore = ComposeProjectStore()
+    ) {
         self.runtime = runtime
+        self.composeRuntime = composeRuntime
+        self.composeStore = composeStore
     }
 
     // MARK: Computed properties
@@ -118,6 +158,11 @@ final class ContainersViewModel {
         return images.first { $0.id == selectedImageID }
     }
 
+    var selectedComposeProject: ComposeProject? {
+        guard let selectedComposeProjectID else { return nil }
+        return composeProjects.first { $0.id == selectedComposeProjectID }
+    }
+
     var filteredContainers: [ContainerSummary] {
         switch sidebarSelection {
         case .all, .none:
@@ -126,14 +171,14 @@ final class ContainersViewModel {
             return containers.filter { $0.state == .running }
         case .stopped:
             return containers.filter { $0.state != .running }
-        case .images, .settings:
+        case .images, .compose, .settings:
             return []
         }
     }
 
     // MARK: Methods
 
-    /// Refreshes containers, system status, stats, and images.
+    /// Refreshes containers, system status, stats, images, and compose projects.
     /// - Parameter quiet: when `true`, skips the `isLoading` toggle (suitable for
     ///   background polling so the UI doesn't flicker on every cycle).
     func refresh(quiet: Bool = false) async {
@@ -153,12 +198,13 @@ final class ContainersViewModel {
             return
         }
 
-        // Fetch stats and images concurrently; failures in either are non-fatal so a
-        // broken images endpoint never blanks the container list (and vice versa).
+        // Fetch stats, images, and compose projects concurrently; failures in any
+        // are non-fatal so a broken endpoint never blanks the container list.
         // Each branch is wrapped in a non-throwing async closure so that a throw from
         // one does not cancel the other's in-flight work.
         async let statsResult = fetchStats()
         async let imagesResult = fetchImages()
+        async let composeResult = fetchComposeProjects()
 
         switch await statsResult {
         case .success(let freshStats):
@@ -174,6 +220,19 @@ final class ContainersViewModel {
         case .failure(let error):
             // Non-fatal: keep stale image list, surface a non-blocking error message.
             errorMessage = error.localizedDescription
+        }
+
+        switch await composeResult {
+        case .success(let (projects, version)):
+            composeProjects = projects
+            // version is non-nil only on the first probe (composeAvailable == nil).
+            if let version {
+                composeAvailable = true
+                composeVersion = version
+            }
+        case .failure:
+            // Non-fatal: keep stale compose project list.
+            break
         }
     }
 
@@ -192,6 +251,56 @@ final class ContainersViewModel {
         catch { return .failure(error) }
     }
 
+    /// Reloads compose-file paths from the store and reparses each file off the main
+    /// actor (disk I/O).  Also probes `composeRuntime.version()` the first time only.
+    ///
+    /// Returns the reparsed project list and — when a version probe was performed —
+    /// the version string.  The version is `nil` when no probe was needed (subsequent
+    /// calls after `composeAvailable` is already set).
+    ///
+    /// Parse failures for individual files produce a stub row with `isMissing = true`
+    /// instead of aborting the entire list (same resilience policy as the image list).
+    private func fetchComposeProjects() async -> Result<([ComposeProject], String?), any Error> {
+        let paths = composeStore.paths()
+
+        // Reparse each file off the main actor to avoid blocking the UI during disk I/O.
+        let projects: [ComposeProject] = await Task.detached(priority: .utility) {
+            paths.map { path -> ComposeProject in
+                let fileURL = URL(fileURLWithPath: path)
+                do {
+                    return try ComposeFileParser.load(fileURL: fileURL)
+                } catch {
+                    // Parse failure: return a stub with isMissing so the row is still
+                    // visible with a warning indicator.
+                    let folderURL = fileURL.deletingLastPathComponent()
+                    let projectName = ComposeFileParser.projectName(name: nil, folderURL: folderURL)
+                    var stub = ComposeProject(
+                        id: path,
+                        fileURL: fileURL,
+                        projectName: projectName,
+                        displayName: folderURL.lastPathComponent,
+                        serviceNames: [],
+                        serviceImages: [:]
+                    )
+                    stub.isMissing = true
+                    return stub
+                }
+            }
+        }.value
+
+        // Probe the compose binary version only when not yet determined.
+        var versionString: String?
+        if composeAvailable == nil {
+            versionString = await composeRuntime.version()
+            if versionString == nil {
+                // Binary was not found — mark as unavailable immediately.
+                composeAvailable = false
+            }
+        }
+
+        return .success((projects, versionString))
+    }
+
     func refreshStats() async {
         do {
             let freshStats = try await runtime.stats(id: nil)
@@ -200,6 +309,16 @@ final class ContainersViewModel {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// Resets the compose availability probe so the next `refresh()` re-checks the binary.
+    ///
+    /// Call this from Settings when the user changes the `containerComposeCLIPath` preference,
+    /// or from the install-prompt Retry button.
+    func reprobeCompose() async {
+        composeAvailable = nil
+        composeVersion = nil
+        await refresh(quiet: true)
     }
 
     // MARK: Stats merge
@@ -333,6 +452,40 @@ final class ContainersViewModel {
         }
     }
 
+    // MARK: Compose status derivation
+
+    /// Derives the live status of each service in `project` by matching the expected
+    /// container id (`"<project.projectName>-<serviceName>"`) against `containers`.
+    ///
+    /// The match is **exact** — a project named `"web"` does NOT claim a container
+    /// named `"web-app-cache"` from a different project.  A service with no matching
+    /// container gets `state == nil` ("not created").
+    ///
+    /// This is a pure, `nonisolated` helper so it can be exercised in tests without
+    /// a view-model instance (same pattern as `markInUse`).
+    ///
+    /// - Parameters:
+    ///   - project: The compose project whose service list drives the output.
+    ///   - containers: The current container list (may include stopped containers).
+    /// - Returns: One `ComposeServiceStatus` per service, in `project.serviceNames` order.
+    nonisolated static func serviceStatuses(
+        for project: ComposeProject,
+        containers: [ContainerSummary]
+    ) -> [ComposeServiceStatus] {
+        // Build a map for O(1) container lookup by id.
+        let containerMap = Dictionary(uniqueKeysWithValues: containers.map { ($0.id, $0) })
+        return project.serviceNames.map { serviceName in
+            let expectedID = "\(project.projectName)-\(serviceName)"
+            let matchingContainer = containerMap[expectedID]
+            return ComposeServiceStatus(
+                id: expectedID,
+                serviceName: serviceName,
+                image: project.serviceImages[serviceName],
+                state: matchingContainer?.state
+            )
+        }
+    }
+
     // MARK: Central error handler
 
     /// Routes runtime errors to the appropriate system-status / error-message state.
@@ -345,12 +498,18 @@ final class ContainersViewModel {
                 errorMessage = nil
                 containers = []
                 stats = []
+                // composeProjects comes from disk — do not clear it here.
                 return
             case .systemNotRunning:
                 systemStatus = .stopped
                 errorMessage = nil
                 containers = []
                 stats = []
+                // composeProjects comes from disk — do not clear it here.
+                return
+            case .composeCLINotFound:
+                // Mark compose as unavailable without touching container/system state.
+                composeAvailable = false
                 return
             default:
                 break
@@ -523,5 +682,184 @@ final class ContainersViewModel {
         } catch {
             handle(error)
         }
+    }
+
+    // MARK: Compose actions
+
+    /// Runs `container-compose up -d` for all services in `project`.
+    ///
+    /// The underlying work is launched in a fire-and-forget `Task` so image pulls
+    /// (which can take minutes) do not block refresh or other UI interaction.
+    /// On completion, `lastComposeOutput` is set to the trimmed CLI stdout, the
+    /// project is removed from `busyComposeProjects`, and a quiet refresh runs.
+    func upProject(_ project: ComposeProject) {
+        upProject(project, rebuild: false, noCache: false)
+    }
+
+    /// Runs `container-compose up -d` for all services, with optional rebuild/no-cache.
+    func upProject(_ project: ComposeProject, rebuild: Bool, noCache: Bool) {
+        guard !busyComposeProjects.contains(project.id) else { return }
+        busyComposeProjects.insert(project.id)
+        Task {
+            do {
+                let output = try await composeRuntime.up(
+                    project: project,
+                    services: [],
+                    rebuild: rebuild,
+                    noCache: noCache
+                )
+                lastComposeOutput = output.trimmingCharacters(in: .whitespacesAndNewlines)
+                errorMessage = nil
+            } catch {
+                handle(error)
+            }
+            busyComposeProjects.remove(project.id)
+            await refresh(quiet: true)
+        }
+    }
+
+    /// Runs `container-compose build` for all services in `project`.
+    func buildProject(_ project: ComposeProject) {
+        guard !busyComposeProjects.contains(project.id) else { return }
+        busyComposeProjects.insert(project.id)
+        Task {
+            do {
+                let output = try await composeRuntime.build(
+                    project: project,
+                    services: [],
+                    noCache: false
+                )
+                lastComposeOutput = output.trimmingCharacters(in: .whitespacesAndNewlines)
+                errorMessage = nil
+            } catch {
+                handle(error)
+            }
+            busyComposeProjects.remove(project.id)
+            await refresh(quiet: true)
+        }
+    }
+
+    /// Stops all running containers for `project` by calling `ContainerRuntime.stop(id:)`
+    /// on each matched container in **reverse** service-declaration order.
+    ///
+    /// Does NOT call `ComposeRuntime` — `container-compose down` 0.12.0 has an XPC
+    /// protocol mismatch with container runtime 1.0.0.  Native `container stop` is used
+    /// instead (verified working on compose-created containers).
+    func downProject(_ project: ComposeProject) {
+        guard !busyComposeProjects.contains(project.id) else { return }
+        busyComposeProjects.insert(project.id)
+        Task {
+            // Derive the running containers for this project in reverse service order.
+            let statuses = Self.serviceStatuses(for: project, containers: containers)
+            let runningIDs = statuses
+                .reversed()
+                .filter { $0.state == .running }
+                .map(\.id)
+            for id in runningIDs {
+                do {
+                    try await runtime.stop(id: id)
+                } catch {
+                    handle(error)
+                }
+            }
+            busyComposeProjects.remove(project.id)
+            await refresh(quiet: true)
+        }
+    }
+
+    /// Runs `container-compose up -d` for a single service within `project`.
+    func upService(_ name: String, in project: ComposeProject) {
+        guard !busyComposeProjects.contains(project.id) else { return }
+        busyComposeProjects.insert(project.id)
+        Task {
+            do {
+                let output = try await composeRuntime.up(
+                    project: project,
+                    services: [name],
+                    rebuild: false,
+                    noCache: false
+                )
+                lastComposeOutput = output.trimmingCharacters(in: .whitespacesAndNewlines)
+                errorMessage = nil
+            } catch {
+                handle(error)
+            }
+            busyComposeProjects.remove(project.id)
+            await refresh(quiet: true)
+        }
+    }
+
+    /// Stops a single running service container via `ContainerRuntime.stop(id:)`.
+    ///
+    /// Does NOT call `ComposeRuntime` — see `downProject(_:)` for the rationale.
+    func downService(_ name: String, in project: ComposeProject) {
+        guard !busyComposeProjects.contains(project.id) else { return }
+        busyComposeProjects.insert(project.id)
+        Task {
+            let expectedID = "\(project.projectName)-\(name)"
+            let statuses = Self.serviceStatuses(for: project, containers: containers)
+            if let status = statuses.first(where: { $0.id == expectedID }),
+               status.state == .running {
+                do {
+                    try await runtime.stop(id: expectedID)
+                } catch {
+                    handle(error)
+                }
+            }
+            busyComposeProjects.remove(project.id)
+            await refresh(quiet: true)
+        }
+    }
+
+    // MARK: Compose project management
+
+    /// Registers the compose file at `url` and immediately reparses all projects.
+    ///
+    /// Does not touch containers — adding a project only updates the registered path list.
+    func addComposeProject(url: URL) {
+        composeStore.add(url)
+        Task { await reloadComposeProjects() }
+    }
+
+    /// Removes `project` from the registered path list and immediately refreshes the list.
+    ///
+    /// Clears `selectedComposeProjectID` when it pointed at the removed project.
+    /// Does not touch containers.
+    func removeComposeProject(_ project: ComposeProject) {
+        composeStore.remove(id: project.id)
+        if selectedComposeProjectID == project.id {
+            selectedComposeProjectID = nil
+        }
+        Task { await reloadComposeProjects() }
+    }
+
+    /// Reparses all registered compose files from disk and updates `composeProjects`.
+    ///
+    /// A lighter-weight alternative to a full `refresh()` — only the compose section
+    /// is updated, leaving containers, images, and stats unchanged.
+    private func reloadComposeProjects() async {
+        let paths = composeStore.paths()
+        let projects: [ComposeProject] = await Task.detached(priority: .utility) {
+            paths.map { path -> ComposeProject in
+                let fileURL = URL(fileURLWithPath: path)
+                do {
+                    return try ComposeFileParser.load(fileURL: fileURL)
+                } catch {
+                    let folderURL = fileURL.deletingLastPathComponent()
+                    let projectName = ComposeFileParser.projectName(name: nil, folderURL: folderURL)
+                    var stub = ComposeProject(
+                        id: path,
+                        fileURL: fileURL,
+                        projectName: projectName,
+                        displayName: folderURL.lastPathComponent,
+                        serviceNames: [],
+                        serviceImages: [:]
+                    )
+                    stub.isMissing = true
+                    return stub
+                }
+            }
+        }.value
+        composeProjects = projects
     }
 }
