@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-06-13
+
+### Added
+
+- Compose projects section for registering Docker Compose files, persisting them across launches, viewing per-service state, and running project or service Up, Down, and Build actions.
+- Compose project detail panel with service images, container states, action output, and a shortcut to open matching containers in the main dashboard.
+- `container-compose` runtime integration with independent binary discovery, a configurable path in Settings, an installation prompt when unavailable, and mock runtime support.
+- Compose YAML parsing via Yams, including declaration-order preservation, null service bodies, `depends_on` array and map forms, explicit `container_name` values, and dependency-aware project stop ordering.
+- Duplicate Compose project-name detection with an explanatory warning for container identifier collisions.
+- Live Compose command output while images are pulled or built, with ANSI and carriage-return progress formatting cleaned for display.
+- Homebrew installation instructions for the Open Southeners tap and `container-app` cask.
+- Compose parser, project store, status matching, action error, duplicate-name, runtime, and live-progress test coverage.
+
+### Fixed
+
+- Compose services now match containers using explicit `container_name` values when present, fixing projects that remained at `0 of N running` despite their containers running.
+- Compose Down actions now stop containers using their resolved custom names and project dependency order.
+- Compose action failures remain visible after refresh and include useful command output instead of being hidden by macOS system logging noise.
+- Compose progress output is shown before the command finishes instead of appearing only after long image downloads or builds complete.
+- Compose services retain their YAML declaration order, and `depends_on` values are parsed without rejecting mixed map value types.
+- Container lists, image state, and Compose status refresh correctly after actions; stale image state is cleared when the container system is unavailable.
+- Logs use the native selectable monospaced text view, preventing long output from disappearing at Core Animation texture limits.
+- Integration tests discover the Apple `container` binary through standard paths and `which` instead of assuming `/usr/local/bin/container`.
+
+### Changed
+
+- `ProcessRunner` now supports working directories and incremental stdout/stderr callbacks while retaining complete buffered command results.
+- Binary discovery caching is shared through `BinaryCache`, and Compose actions use a common asynchronous action scaffold for busy state, refresh ordering, output, and error handling.
+- Settings path override controls are shared between the Apple `container` and `container-compose` CLIs.
+- Compose Down uses the Apple `container stop` command because `container-compose down` 0.12.0 is incompatible with Apple container runtime 1.0.0.
+
 ## [1.2.0] - 2026-06-12
 
 ### Changed
@@ -63,5 +94,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - XcodeGen `project.yml` as the sole source of truth for the Xcode project (`.xcodeproj` is gitignored).
 - App Sandbox disabled; `NSAppleEventsUsageDescription` declared for Terminal scripting.
 
-[Unreleased]: https://github.com/OpenSoutheners/AppleContainerUI/compare/v1.0.0...HEAD
+[1.3.0]: https://github.com/OpenSoutheners/AppleContainerUI/compare/v1.2.0...v1.3.0
+[1.2.0]: https://github.com/OpenSoutheners/AppleContainerUI/compare/v1.1.0...v1.2.0
+[1.1.0]: https://github.com/OpenSoutheners/AppleContainerUI/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/OpenSoutheners/AppleContainerUI/releases/tag/v1.0.0
