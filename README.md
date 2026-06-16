@@ -6,17 +6,6 @@ A native macOS menu-bar app and dashboard for [Apple's `container` CLI](https://
 ![Swift 6](https://img.shields.io/badge/Swift-6-orange)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-## Requirements
-
-- macOS 26 or later (required by Apple's `container` runtime)
-- Apple `container` CLI 1.0.0 or later (`container system status` must exit successfully)
-- `container-compose` CLI (optional — required for the Compose section only):
-  ```bash
-  brew install container-compose
-  ```
-  The app shows an install prompt in the Compose section when the binary is not found. A custom
-  path can be set in Settings.
-
 The app shells out to the `container` binary — there is no daemon or framework binding. It expects the binary at `/usr/local/bin/container` (the official package location), `/opt/homebrew/bin/container`, or a custom path configured in Settings.
 
 ## Installation
