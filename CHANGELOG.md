@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Docker-compatibility shell-function layer translating Docker commands (`docker ps`, `docker images`, etc.) to Apple `container` and `container-compose` CLIs, available as a standalone `scripts/docker-compat.sh` script and installable from Settings.
+- "Docker compatibility" section in Settings with Install/Remove buttons that reversibly write shell-function blocks into the user's login-shell rc file (`~/.zshrc` or `~/.bash_profile`).
+
 ## [1.3.0] - 2026-06-13
 
 ### Added
