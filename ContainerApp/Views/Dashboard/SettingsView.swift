@@ -29,9 +29,85 @@ struct SettingsView: View {
                     Task { await model.reprobeCompose() }
                 }
             )
+
+            DockerCompatSection()
         }
         .formStyle(.grouped)
         .navigationTitle("Settings")
+    }
+}
+
+// MARK: - Docker compatibility section
+
+/// Installs/removes shell shims that let `docker` / `docker compose` drive the
+/// `container` / `container-compose` CLIs (see `DockerCompatInstaller`).
+///
+/// The toggle writes a reversible, marker-delimited block into the login
+/// shell's rc file; removing it strips the block back out. Status is re-read
+/// from disk on appearance and after every action so the button reflects the
+/// real file state rather than cached UI state.
+private struct DockerCompatSection: View {
+
+    @State private var isInstalled = false
+    @State private var errorMessage: String?
+
+    /// The rc file being edited (`~/.zshrc` or `~/.bash_profile`), shown to the
+    /// user so the side effect is never hidden.
+    private let rcURL = DockerCompatInstaller.defaultRCURL()
+
+    private var rcDisplayPath: String {
+        "~/\(rcURL.lastPathComponent)"
+    }
+
+    var body: some View {
+        Section {
+            Button(isInstalled ? "Remove Docker aliases" : "Install Docker aliases") {
+                toggle()
+            }
+
+            if let errorMessage {
+                Label {
+                    Text(errorMessage).foregroundStyle(.orange)
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                }
+                .font(.footnote)
+            } else if isInstalled {
+                Label {
+                    Text("Installed in \(rcDisplayPath). Restart your terminal (or run `source \(rcDisplayPath)`) to use it.")
+                        .foregroundStyle(.secondary)
+                } icon: {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                }
+                .font(.footnote)
+            }
+        } header: {
+            Text("Docker compatibility")
+        } footer: {
+            Text("Adds `docker` and `docker compose` shell functions that forward to the container CLIs (e.g. `docker ps` → `container list`). Edits \(rcDisplayPath).")
+                .foregroundStyle(.secondary)
+        }
+        .onAppear { refreshStatus() }
+    }
+
+    private func refreshStatus() {
+        isInstalled = DockerCompatInstaller.status(at: rcURL)
+    }
+
+    private func toggle() {
+        errorMessage = nil
+        do {
+            if isInstalled {
+                try DockerCompatInstaller.uninstall(at: rcURL)
+            } else {
+                try DockerCompatInstaller.install(at: rcURL)
+            }
+            refreshStatus()
+        } catch {
+            errorMessage = "Could not update \(rcDisplayPath): \(error.localizedDescription)"
+        }
     }
 }
 
