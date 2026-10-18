@@ -50,6 +50,25 @@ jobs:
             -destination 'platform=macOS,arch=arm64' \
             test
 
+      # Packages are resolved fresh here, so check that the bundled licenses match what
+      # was actually resolved. Fails release builds; only warns on branch/PR builds.
+      - name: Check third-party notices
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          python3 scripts/generate-third-party-notices.py
+          if ! git diff --quiet -- ContainerApp/Resources/ThirdPartyNotices.txt; then
+            git diff --stat -- ContainerApp/Resources/ThirdPartyNotices.txt
+            MESSAGE="ThirdPartyNotices.txt is out of date with the resolved packages. Run scripts/generate-third-party-notices.py and commit the result."
+            if [[ -n "${VERSION}" ]]; then
+              echo "::error::${MESSAGE}"
+              exit 1
+            fi
+            echo "::warning::${MESSAGE}"
+          fi
+
       - name: Archive
         shell: bash
         env:

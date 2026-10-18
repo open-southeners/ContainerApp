@@ -31,6 +31,8 @@ struct SettingsView: View {
             )
 
             DockerCompatSection()
+
+            LicensesSection()
         }
         .formStyle(.grouped)
         .navigationTitle("Settings")
@@ -107,6 +109,29 @@ private struct DockerCompatSection: View {
             refreshStatus()
         } catch {
             errorMessage = "Could not update \(rcDisplayPath): \(error.localizedDescription)"
+        }
+    }
+}
+
+// MARK: - Licenses section
+
+/// Opens the bundled `ThirdPartyNotices.txt` (licenses and NOTICE files of the
+/// open-source packages linked into the app) in the default text viewer.
+private struct LicensesSection: View {
+
+    private let noticesURL = Bundle.main.url(forResource: "ThirdPartyNotices", withExtension: "txt")
+
+    var body: some View {
+        Section {
+            Button("Open Source Licenses") {
+                if let noticesURL { NSWorkspace.shared.open(noticesURL) }
+            }
+            .disabled(noticesURL == nil)
+        } header: {
+            Text("About")
+        } footer: {
+            Text("ContainerApp is released under the MIT License and includes open-source software from Apple and others under their own licenses.")
+                .foregroundStyle(.secondary)
         }
     }
 }
