@@ -7,6 +7,12 @@ packages:
   Yams:
     url: https://github.com/jpsim/Yams.git
     from: 6.0.0
+  Container:
+    url: https://github.com/apple/container.git
+    exactVersion: 1.5.0
+  SwiftSystem:
+    url: https://github.com/apple/swift-system.git
+    from: 1.6.4
 
 targets:
   ContainerApp:
@@ -17,6 +23,14 @@ targets:
       - ContainerApp
     dependencies:
       - package: Yams
+      - package: Container
+        product: ContainerAPIClient
+      - package: Container
+        product: ContainerResource
+      - package: Container
+        product: ContainerPersistence
+      - package: SwiftSystem
+        product: SystemPackage
     settings:
       base:
         SWIFT_VERSION: "6.0"

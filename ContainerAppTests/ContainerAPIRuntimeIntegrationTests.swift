@@ -41,7 +41,7 @@ private func runCLI(_ arguments: [String]) -> Int32 {
 
 // MARK: - Integration suite
 
-/// Integration tests that exercise `ContainerCLIRuntime` against the real
+/// Integration tests that exercise `ContainerAPIRuntime` against the real
 /// Apple `container` system service.
 ///
 /// The entire suite is gated with `.enabled(if:)` so it skips cleanly on
@@ -50,24 +50,28 @@ private func runCLI(_ arguments: [String]) -> Int32 {
 /// The suite is `.serialized` because it shares scratch containers — CLI
 /// operations against the same service are not snapshot-isolated.
 @Suite(
-    "ContainerCLIRuntime integration",
+    "ContainerAPIRuntime integration",
     .enabled(if: containerSystemIsAvailable(), "container system is not available"),
     .serialized
 )
-struct ContainerCLIRuntimeIntegrationTests {
+struct ContainerAPIRuntimeIntegrationTests {
 
     // MARK: Shared runtime
 
-    /// A fresh `ContainerCLIRuntime` pointing at the default binary path.
-    private let runtime = ContainerCLIRuntime()
+    /// A fresh `ContainerAPIRuntime` connected to the running apiserver.
+    private let runtime = ContainerAPIRuntime()
 
     // MARK: - Test 1: Full lifecycle
 
     /// Creates a scratch container, exercises every major runtime method against
-    /// it, then prunes it away.
+    /// it, then deletes it.
     ///
-    /// Lifecycle: run → list (running) → logs → inspect → stop → list (stopped) → prune → gone.
-    @Test("Lifecycle: run → list → logs → inspect → stop → prune", .timeLimit(.minutes(2)))
+    /// Lifecycle: run → list (running) → logs → inspect → stats → stop → list (stopped)
+    /// → start → list (running) → stop → delete → gone.
+    ///
+    /// `pruneContainers()` is deliberately not called: it deletes **every** stopped
+    /// container on the machine, not just this test's.
+    @Test("Lifecycle: run → list → logs → inspect → stats → stop → start → delete", .timeLimit(.minutes(2)))
     func lifecycle() async throws {
         let name = uniqueContainerName(suffix: "1")
 
@@ -101,6 +105,13 @@ struct ContainerCLIRuntimeIntegrationTests {
         #expect(inspectOutput.contains(name),
                 "inspect output should contain the container name '\(name)'")
 
+        // --- 3b. stats(id:) for this container and as part of the running set ---
+        let ownStats = try await runtime.stats(id: name)
+        #expect(ownStats.first?.id == name)
+        let allStats = try await runtime.stats(id: nil)
+        #expect(allStats.contains(where: { $0.id == name }),
+                "stats(id: nil) should include running container '\(name)'")
+
         // --- 4. stop(id:) ---
         try await runtime.stop(id: name)
 
@@ -114,15 +125,28 @@ struct ContainerCLIRuntimeIntegrationTests {
         #expect(sc.state != .running,
                 "Container '\(name)' should not be running after stop, got \(sc.state)")
 
-        // --- 6. pruneContainers() ---
-        try await runtime.pruneContainers()
+        // --- 6. start(id:) brings it back ---
+        try await runtime.start(id: name)
+
+        try await Task.sleep(for: .seconds(2))
+
+        let containersAfterStart = try await runtime.listContainers()
+        let restarted = try #require(containersAfterStart.first(where: { $0.id == name }),
+                                     "Container '\(name)' should appear after start")
+        #expect(restarted.state == .running,
+                "Container '\(name)' should be running after start, got \(restarted.state)")
+
+        // --- 7. stop + delete(id:) ---
+        try await runtime.stop(id: name)
+        try await Task.sleep(for: .seconds(1))
+        try await runtime.delete(id: name)
 
         try await Task.sleep(for: .seconds(1))
 
-        // --- 7. listContainers() no longer contains it ---
-        let containersAfterPrune = try await runtime.listContainers()
-        let stillPresent = containersAfterPrune.contains(where: { $0.id == name })
-        #expect(!stillPresent, "Container '\(name)' should be gone after prune")
+        // --- 8. listContainers() no longer contains it ---
+        let containersAfterDelete = try await runtime.listContainers()
+        let stillPresent = containersAfterDelete.contains(where: { $0.id == name })
+        #expect(!stillPresent, "Container '\(name)' should be gone after delete")
     }
 
     // MARK: - Test: Image list + inspect (read-only)
@@ -151,6 +175,33 @@ struct ContainerCLIRuntimeIntegrationTests {
             #expect(looksLikeJSON,
                     "inspectImage output should look like JSON (contain '{' and '}') for '\(first.reference)'")
         }
+    }
+
+    // MARK: - Test: Missing container
+
+    @Test("Operations on an unknown container throw notFound", .timeLimit(.minutes(1)))
+    func unknownContainer() async throws {
+        let name = uniqueContainerName(suffix: "missing")
+        await #expect(throws: ContainerRuntimeError.self) {
+            try await runtime.inspect(id: name)
+        }
+        do {
+            try await runtime.stop(id: name)
+            Issue.record("stop on a missing container should throw")
+        } catch let error as ContainerRuntimeError {
+            guard case .notFound(let id) = error else {
+                Issue.record("Expected notFound, got \(error)")
+                return
+            }
+            #expect(id == name)
+        }
+    }
+
+    // MARK: - Test: System status
+
+    @Test("systemStatus reports running while the apiserver is up", .timeLimit(.minutes(1)))
+    func systemStatusRunning() async throws {
+        #expect(try await runtime.systemStatus() == .running)
     }
 
     // MARK: - Test 2: Kill + delete

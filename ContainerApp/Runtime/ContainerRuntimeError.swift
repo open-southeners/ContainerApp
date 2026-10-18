@@ -5,7 +5,8 @@ import Foundation
 enum ContainerRuntimeError: Error {
     case notFound(id: String)
     case commandFailed(exitCode: Int32, stderr: String)
-    case decodingFailed(raw: String)
+    /// A container-system API request failed; `message` is the runtime's own explanation.
+    case requestFailed(message: String)
     case cliNotFound
     case composeCLINotFound
     case systemNotRunning
@@ -33,10 +34,10 @@ extension ContainerRuntimeError: LocalizedError {
             let preview = trimmed.count > 200 ? String(trimmed.prefix(200)) : trimmed
             return "Command failed (exit \(exitCode)): \(preview)"
 
-        case .decodingFailed(let raw):
-            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            let preview = trimmed.count > 120 ? String(trimmed.prefix(120)) + "…" : trimmed
-            return "Could not parse CLI output: \(preview)"
+        case .requestFailed(let message):
+            let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+            let preview = trimmed.count > 200 ? String(trimmed.prefix(200)) + "…" : trimmed
+            return "Container system request failed: \(preview)"
         }
     }
 }

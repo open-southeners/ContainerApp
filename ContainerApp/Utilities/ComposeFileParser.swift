@@ -14,7 +14,7 @@ enum ComposeError: Error, Sendable {
 
 /// Minimal compose-file skeleton — only the keys the app uses are decoded.
 /// All fields are optional/lenient so unknown keys in the file don't break parsing
-/// (same leniency policy as `CLIContainerDTO`).
+/// (lenient so unknown future keys never break parsing).
 private struct ComposeFileStub: Decodable {
     let name: String?
     /// Service values can be `null` (bare key) — hence the double-optional.

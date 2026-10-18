@@ -2,7 +2,10 @@
 
 Real output captured from Apple `container` CLI **1.0.0** on 2026-06-10 (macOS 26.5.1),
 using a scratch container (`container run -d --name plan-test alpine:latest sleep 600`).
-Used by decoder unit tests; re-capture if the CLI version changes.
+The CLI renders the `ContainerResource` library's own Codable types as JSON (`ManagedContainer`,
+`ContainerStats`, `ImageResource`), so the mapping tests decode these files straight into those
+types with an ISO 8601 date strategy. Re-capture if a bump of the `apple/container` pin changes
+their shape.
 
 | File | Command | Notes |
 |---|---|---|

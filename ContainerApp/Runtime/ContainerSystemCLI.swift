@@ -1,10 +1,13 @@
 import Foundation
 
-// MARK: - ContainerCLIRuntime
+// MARK: - ContainerSystemCLI
 
-/// A `ContainerRuntime` implementation that shells out to the Apple `container`
-/// CLI (1.0.0+).  All interaction is non-interactive: `ProcessRunner` sets
-/// `/dev/null` as stdin so prompts fail immediately rather than hanging.
+/// Starts and stops the container system by shelling out to the Apple `container`
+/// CLI.  Everything else goes through `ContainerAPIRuntime`; this stays on the CLI
+/// because `container system start` registers the installed `container-apiserver`
+/// with launchd — installation management rather than an API call.
+/// All interaction is non-interactive: `ProcessRunner` sets `/dev/null` as stdin
+/// so prompts fail immediately rather than hanging.
 ///
 /// Binary discovery order (first hit wins, result cached per UserDefaults key):
 ///   1. UserDefaults `containerCLIPath` (trimmed, non-empty, must be executable)
@@ -18,9 +21,9 @@ import Foundation
 /// A UserDefaults path that is missing or not executable falls through silently
 /// to the rest of the chain.
 ///
-/// If none of the above resolves, every method that needs the binary will
-/// throw `ContainerRuntimeError.cliNotFound`.
-final class ContainerCLIRuntime: ContainerRuntime {
+/// If none of the above resolves, every method throws
+/// `ContainerRuntimeError.cliNotFound`.
+final class ContainerSystemCLI: Sendable {
 
     // MARK: Stored properties
 
@@ -53,7 +56,7 @@ final class ContainerCLIRuntime: ContainerRuntime {
     /// The cache is keyed by the current UserDefaults override string so that
     /// editing the setting in the UI immediately invalidates the cached result.
     /// UserDefaults is thread-safe to read from any isolation context.
-    private func resolvedBinaryURL() async throws -> URL {
+    func resolvedBinaryURL() async throws -> URL {
         // Read the UserDefaults override on every call (cheap, thread-safe).
         // Trim whitespace so an accidental trailing newline is ignored.
         let udRaw = UserDefaults.standard.string(forKey: "containerCLIPath") ?? ""
@@ -128,10 +131,9 @@ final class ContainerCLIRuntime: ContainerRuntime {
     }
 
     /// Calls `run(_:)` and maps a non-zero exit code to the appropriate
-    /// `ContainerRuntimeError`.  Pass the `id` when the command targets a
-    /// specific container so "not found" can be mapped to `.notFound(id:)`.
+    /// `ContainerRuntimeError`.
     @discardableResult
-    private func runChecked(_ arguments: [String], id: String? = nil) async throws -> ProcessResult {
+    private func runChecked(_ arguments: [String]) async throws -> ProcessResult {
         let result = try await run(arguments)
         guard result.exitCode != 0 else { return result }
 
@@ -144,11 +146,6 @@ final class ContainerCLIRuntime: ContainerRuntime {
             throw ContainerRuntimeError.systemNotRunning
         }
 
-        // "not found" — only map to .notFound when we have an id to report.
-        if let id, trimmed.lowercased().contains("not found") {
-            throw ContainerRuntimeError.notFound(id: id)
-        }
-
         // Generic failure: prefer stderr, fall back to stdout.
         throw ContainerRuntimeError.commandFailed(
             exitCode: result.exitCode,
@@ -156,60 +153,7 @@ final class ContainerCLIRuntime: ContainerRuntime {
         )
     }
 
-    // MARK: - ContainerRuntime
-
-    /// `container list --all --format json` decoded via `FlexibleContainerDecoder`.
-    func listContainers() async throws -> [ContainerSummary] {
-        let result = try await runChecked(["list", "--all", "--format", "json"])
-        return try FlexibleContainerDecoder.decodeList(from: result.stdout)
-    }
-
-    /// `container inspect <id>` — returns the raw stdout string.
-    func inspect(id: String) async throws -> String {
-        let result = try await runChecked(["inspect", id], id: id)
-        return result.stdout
-    }
-
-    /// `container logs -n <lines> <id>` — returns the raw stdout string.
-    func logs(id: String, lines: Int) async throws -> String {
-        let result = try await runChecked(["logs", "-n", "\(lines)", id], id: id)
-        return result.stdout
-    }
-
-    /// `container stats --format json --no-stream [<id>]` decoded via `FlexibleContainerDecoder`.
-    /// Stats failures are independent — the caller is responsible for deciding
-    /// whether to propagate or swallow the error without affecting the container list.
-    func stats(id: String?) async throws -> [ContainerStats] {
-        var arguments = ["stats", "--format", "json", "--no-stream"]
-        if let id { arguments.append(id) }
-        let result = try await runChecked(arguments, id: id)
-        return try FlexibleContainerDecoder.decodeStats(from: result.stdout)
-    }
-
-    /// `container start <id>`
-    func start(id: String) async throws {
-        try await runChecked(["start", id], id: id)
-    }
-
-    /// `container stop <id>`
-    func stop(id: String) async throws {
-        try await runChecked(["stop", id], id: id)
-    }
-
-    /// `container kill <id>`
-    func kill(id: String) async throws {
-        try await runChecked(["kill", id], id: id)
-    }
-
-    /// `container delete <id>`
-    func delete(id: String) async throws {
-        try await runChecked(["delete", id], id: id)
-    }
-
-    /// `container prune` — removes all stopped containers.
-    func pruneContainers() async throws {
-        try await runChecked(["prune"])
-    }
+    // MARK: - System lifecycle
 
     /// `container system start`
     ///
@@ -254,73 +198,5 @@ final class ContainerCLIRuntime: ContainerRuntime {
     /// `container system stop`
     func stopSystem() async throws {
         try await runChecked(["system", "stop"])
-    }
-
-    // MARK: - Image management
-
-    /// `container image list --format json` decoded via `FlexibleContainerDecoder`.
-    func listImages() async throws -> [ImageSummary] {
-        let result = try await runChecked(["image", "list", "--format", "json"])
-        return try FlexibleContainerDecoder.decodeImages(from: result.stdout)
-    }
-
-    /// `container image inspect <reference>` — returns the raw stdout string.
-    ///
-    /// The CLI prints pretty-printed JSON by default; there is no `--format` flag
-    /// for this subcommand.  The existing "not found" mapping in `runChecked` gives
-    /// `.notFound(id:)` for free when the reference is unknown.
-    func inspectImage(reference: String) async throws -> String {
-        let result = try await runChecked(["image", "inspect", reference], id: reference)
-        return result.stdout
-    }
-
-    /// `container image delete <reference>` — removes the image from the local store.
-    ///
-    /// No `--force` flag is passed: if the CLI refuses (e.g. the image is in use),
-    /// the stderr flows through `.commandFailed` into the existing error banner.
-    func deleteImage(reference: String) async throws {
-        try await runChecked(["image", "delete", reference], id: reference)
-    }
-
-    /// `container image prune` — removes dangling images.
-    ///
-    /// Returns the trimmed stdout summary line from the CLI, e.g.
-    /// `"Reclaimed Zero KB in disk space"`.
-    func pruneImages() async throws -> String {
-        let result = try await runChecked(["image", "prune"])
-        return result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    /// `container system status`
-    ///
-    /// This method does NOT use `runChecked` so that a non-running system is
-    /// reported as `.stopped` rather than thrown as an error.
-    ///
-    /// - Returns:
-    ///   - `.running`  — exit 0
-    ///   - `.stopped`  — non-zero exit with output containing "not running"
-    ///   - `.unknown`  — any other non-zero exit (first line of output)
-    /// - Throws: `ContainerRuntimeError.cliNotFound` when binary discovery fails.
-    func systemStatus() async throws -> ContainerSystemStatus {
-        // Binary discovery is still allowed to throw (CLI absent is a hard error).
-        let result = try await run(["system", "status"])
-
-        if result.exitCode == 0 {
-            return .running
-        }
-
-        let combined = result.stderr.isEmpty ? result.stdout : result.stderr
-        let trimmed  = combined.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if trimmed.lowercased().contains("not running") {
-            return .stopped
-        }
-
-        // Preserve the first line of output as a hint for the UI.
-        let firstLine = trimmed
-            .components(separatedBy: .newlines)
-            .first { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-            ?? trimmed
-        return .unknown(firstLine)
     }
 }

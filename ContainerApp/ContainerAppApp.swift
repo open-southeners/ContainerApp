@@ -5,7 +5,7 @@ import SwiftUI
 @main
 struct ContainerAppApp: App {
     @State private var model = ContainersViewModel(
-        runtime: ContainerCLIRuntime(),
+        runtime: ContainerAPIRuntime(),
         composeRuntime: ContainerComposeCLIRuntime(),
         composeStore: ComposeProjectStore()
     )
