@@ -6,7 +6,7 @@ A native macOS menu-bar app and dashboard for [Apple's `container` CLI](https://
 ![Swift 6](https://img.shields.io/badge/Swift-6-orange)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-The app shells out to the `container` binary — there is no daemon or framework binding. It expects the binary at `/usr/local/bin/container` (the official package location), `/opt/homebrew/bin/container`, or a custom path configured in Settings.
+The app talks to the installed container system directly through Apple's own Swift client library (`ContainerAPIClient`, the same one the `container` CLI is built on), so containers, images and stats are shared with the CLI and `container-compose`. Apple's `container` package must still be installed: the app runs `container system start`/`stop` from it, and expects the binary at `/usr/local/bin/container` (the official package location), `/opt/homebrew/bin/container`, or a custom path configured in Settings.
 
 ## Installation
 
@@ -69,34 +69,35 @@ xcodebuild -scheme ContainerApp -destination 'platform=macOS,arch=arm64' test
 
 The test suite includes:
 
-- **Unit tests** — decoder tests against real CLI fixture output (`Fixtures/`), stats merge logic, and `TerminalLauncher` shell-command generation. Always run.
-- **Integration tests** (`ContainerCLIRuntimeIntegrationTests`) — skipped automatically when the CLI is absent or the system is stopped; creates and cleans up scratch containers when it runs.
+- **Unit tests** — model-mapping tests against real CLI fixture output (`Fixtures/`), error classification, log tailing, stats merge logic, and `TerminalLauncher` shell-command generation. Always run.
+- **Integration tests** (`ContainerAPIRuntimeIntegrationTests`) — skipped automatically when the CLI is absent or the system is stopped; creates and cleans up scratch containers when it runs.
 
 Run a single suite:
 
 ```bash
 xcodebuild -scheme ContainerApp -destination 'platform=macOS,arch=arm64' \
-  test -only-testing:ContainerAppTests/ContainerCLIModelsTests
+  test -only-testing:ContainerAppTests/ContainerAPIModelsTests
 ```
 
 ## Distribution
 
-App Sandbox is **disabled** — the app must spawn the CLI and communicate with its XPC apiserver. Distribution is via **Developer ID**, not the Mac App Store. Opening a shell in a container triggers a one-time macOS Automation consent prompt (declared via `NSAppleEventsUsageDescription`).
+App Sandbox is **disabled** — the app must reach the container system's XPC apiserver and spawn the CLI to start and stop it. Distribution is via **Developer ID**, not the Mac App Store. Opening a shell in a container triggers a one-time macOS Automation consent prompt (declared via `NSAppleEventsUsageDescription`).
 
 ## Architecture
 
 ```
-View → ContainersViewModel → ContainerRuntime → container CLI
+View → ContainersViewModel → ContainerRuntime → container-apiserver (XPC)
 ```
 
-- **`ContainerRuntime`** — `Sendable` protocol; two implementations: `ContainerCLIRuntime` (real) and `MockContainerRuntime` (canned data for UI work without a live CLI).
-- **`ContainerCLIRuntime`** — shells out via `ProcessRunner`. Discovers the binary in order: UserDefaults override → `/usr/local/bin` → `/opt/homebrew/bin` → `which`. Non-zero exits are mapped to typed errors (`cliNotFound`, `systemNotRunning`, `commandFailed`, `decodingFailed`); raw stderr is never shown in the UI.
+- **`ContainerRuntime`** — `Sendable` protocol; two implementations: `ContainerAPIRuntime` (real) and `MockContainerRuntime` (canned data for UI work without a live runtime).
+- **`ContainerAPIRuntime`** — calls the apiserver through Apple's `ContainerAPIClient` (pinned to `apple/container` 1.5.0, which also works against 1.0+ runtimes), mirroring what each CLI command does. Library errors are mapped to typed errors (`cliNotFound`, `systemNotRunning`, `notFound`, `requestFailed`).
+- **`ContainerSystemCLI`** — runs `container system start`/`stop` via `ProcessRunner` (they register the installed apiserver with launchd). Discovers the binary in order: UserDefaults override → `/usr/local/bin` → `/opt/homebrew/bin` → `which`.
 - **`ComposeRuntime`** / **`ContainerComposeCLIRuntime`** — separate seam for `container-compose`. Own binary discovery chain keyed by `containerComposeCLIPath` in UserDefaults. `down` is absent by design (see CLAUDE.md); stop/teardown uses `ContainerRuntime.stop(id:)` on matched containers.
 - **`ComposeFileParser`** — parses compose YAML with Yams (the app's first SwiftPM dependency) to get accurate service lists before first `up`. Lenient: unknown keys ignored, null service bodies allowed.
 - **`ComposeProjectStore`** — persists registered compose-file paths in UserDefaults (`composeProjectPaths`).
 - **`ProcessRunner`** — wraps `Foundation.Process`. Reads stdout and stderr concurrently to prevent pipe-buffer deadlocks; sets stdin to `/dev/null` so interactive prompts fail fast.
-- **DTO layer** (`ContainerCLIModels.swift`) — mirrors the CLI JSON with all-optional fields (tolerates unknown future keys), maps to flat UI models (`ContainerSummary`, `ContainerStats`). Container id doubles as name.
-- **Stats** — `container stats` reports cumulative `cpuUsageUsec`; CPU % is derived from the delta between two samples in `ContainersViewModel.mergeStats`.
+- **Model mapping** (`ContainerAPIModels.swift`) — maps the library's `ManagedContainer`, `ContainerStats` and `ImageResource` to flat UI models (`ContainerSummary`, `ContainerStats`, `ImageSummary`). Container id doubles as name.
+- **Stats** — the runtime reports cumulative `cpuUsageUsec`; CPU % is derived from the delta between two samples in `ContainersViewModel.mergeStats`.
 - **`TerminalLauncher`** — opens a shell via `osascript → Terminal.app`. Validates the container id against `^[A-Za-z0-9._-]+$` before interpolation (injection defense).
 
 ## Project layout
@@ -105,7 +106,7 @@ View → ContainersViewModel → ContainerRuntime → container CLI
 ContainerApp/
   ContainerAppApp.swift          # app entry point, scene declarations
   Models/                        # ContainerSummary, ContainerState, ContainerStats, …
-  Runtime/                       # ContainerRuntime + ComposeRuntime protocols + CLI/mock implementations
+  Runtime/                       # ContainerRuntime + ComposeRuntime protocols + API/CLI/mock implementations
   ViewModels/ContainersViewModel.swift
   Views/
     MenuBar/                     # popover views
@@ -113,7 +114,7 @@ ContainerApp/
     Shared/                      # ErrorBannerView, EmptyStateView, state colours
   Utilities/                     # TerminalLauncher, ComposeFileParser, ComposeProjectStore
 ContainerAppTests/               # Swift Testing suites
-Fixtures/                        # captured real CLI output (backs decoder tests)
+Fixtures/                        # captured real CLI output (backs model-mapping tests)
 project.yml                      # XcodeGen spec — edit this, not the .xcodeproj
 ```
 
@@ -121,11 +122,12 @@ project.yml                      # XcodeGen spec — edit this, not the .xcodepr
 
 1. Edit `project.yml` for build-setting changes or new targets; run `xcodegen generate` afterwards.
 2. New source files under `ContainerApp/` are picked up automatically by the target glob.
-3. When updating the CLI version, re-capture fixture output and update `Fixtures/README.md`.
-4. Known non-blocking issues are tracked in `CURRENT_ISSUES.md`.
+3. When bumping the `apple/container` pin in `project.yml`, rerun the integration tests against the oldest supported runtime, re-capture fixture output if its JSON changed, and update `Fixtures/README.md`.
+4. After adding, removing or updating a Swift package, run `python3 scripts/generate-third-party-notices.py` and commit the regenerated `ContainerApp/Resources/ThirdPartyNotices.txt`.
+5. Known non-blocking issues are tracked in `CURRENT_ISSUES.md`.
 
 ## License
 
 ContainerApp is released under the [MIT License](LICENSE).
 
-ContainerApp is an independent, standalone UI application and is **not affiliated with or endorsed by Apple**. It interacts with [Apple's `container` project](https://github.com/apple/container) (licensed under [Apache License 2.0](https://github.com/apple/container/blob/main/LICENSE)) solely by invoking the separately installed `container` CLI as an external process — no Apple `container` code is linked, embedded, or redistributed in this repository or in the built app, so its Apache 2.0 terms do not extend to this codebase. If a future release ever bundles the `container` binary inside the app, that release must ship Apple's Apache 2.0 license text and NOTICE file alongside it.
+ContainerApp is an independent, standalone UI application and is **not affiliated with or endorsed by Apple**. The built app links Apple's [`container`](https://github.com/apple/container) client libraries and [`containerization`](https://github.com/apple/containerization), both licensed under the [Apache License 2.0](https://github.com/apple/container/blob/main/LICENSE), together with their open-source dependencies (SwiftNIO, gRPC Swift, SwiftProtobuf and others, under their own licenses). Their license texts and NOTICE files ship inside the app as `ThirdPartyNotices.txt` (Settings → About → **Open Source Licenses**), generated by `scripts/generate-third-party-notices.py`. The `container` runtime itself is not bundled: the app talks to the separately installed `container-apiserver` and runs the separately installed `container` CLI.

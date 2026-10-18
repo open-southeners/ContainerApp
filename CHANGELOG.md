@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Docker-compatibility shell-function layer translating Docker commands (`docker ps`, `docker images`, etc.) to Apple `container` and `container-compose` CLIs, available as a standalone `scripts/docker-compat.sh` script and installable from Settings.
 - "Docker compatibility" section in Settings with Install/Remove buttons that reversibly write shell-function blocks into the user's login-shell rc file (`~/.zshrc` or `~/.bash_profile`).
+- **Open Source Licenses** in Settings → About, opening the bundled licenses and NOTICE texts of the open-source software included in the app.
+
+### Changed
+
+- **Native container system client**: the app now talks to the container system directly through Apple's `ContainerAPIClient` Swift library instead of running the `container` CLI and parsing its output, so listing, stats, logs, inspect, start, stop, kill, delete, prune and image actions no longer spawn a process. It works with `container` 1.0 and later; the `container` CLI is still required, and still used, for Start System and Stop System.
+- Failed container and image actions now show the container system's own explanation (`Container system request failed: …`) instead of a CLI exit code.
 
 ## [1.3.0] - 2026-06-13
 
