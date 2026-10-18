@@ -76,3 +76,22 @@ jobs:
           prerelease: ${{ needs.version.outputs.prerelease == 'true' }}
           make_latest: ${{ needs.version.outputs.prerelease == 'false' }}
           files: ContainerApp-${{ needs.version.outputs.version }}.zip
+
+  announce:
+    needs: release
+    if: ${{ !contains(github.ref_name, '-') }}
+    permissions:
+      contents: read
+    uses: Pepebits/release-announce/.github/workflows/announce.yml@v1
+    with:
+      tag: ${{ github.ref_name }}
+      notes_source: changelog
+      banner_url: https://opensoutheners.com/gh_card/{repo}
+      install_title: 🍺 Homebrew
+      install_command: brew install --cask open-southeners/tap/container-app
+      buttons: >-
+        [{"text": "📝 Notes", "url": "{repo_url}/releases/tag/{tag}"},
+         {"text": "⬇️ Download", "url": "{repo_url}/releases/download/{tag}/ContainerApp-{version}.zip"}]
+    secrets:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
