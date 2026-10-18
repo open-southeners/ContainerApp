@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-18
+
 ### Added
 
 - Docker-compatibility shell-function layer translating Docker commands (`docker ps`, `docker images`, etc.) to Apple `container` and `container-compose` CLIs, available as a standalone `scripts/docker-compat.sh` script and installable from Settings.
@@ -105,7 +107,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - XcodeGen `project.yml` as the sole source of truth for the Xcode project (`.xcodeproj` is gitignored).
 - App Sandbox disabled; `NSAppleEventsUsageDescription` declared for Terminal scripting.
 
-[1.3.0]: https://github.com/OpenSoutheners/AppleContainerUI/compare/v1.2.0...v1.3.0
-[1.2.0]: https://github.com/OpenSoutheners/AppleContainerUI/compare/v1.1.0...v1.2.0
-[1.1.0]: https://github.com/OpenSoutheners/AppleContainerUI/compare/v1.0.0...v1.1.0
-[1.0.0]: https://github.com/OpenSoutheners/AppleContainerUI/releases/tag/v1.0.0
+[Unreleased]: https://github.com/open-southeners/ContainerApp/compare/1.4.0...HEAD
+[1.4.0]: https://github.com/open-southeners/ContainerApp/compare/1.3.0...1.4.0
+[1.3.0]: https://github.com/open-southeners/ContainerApp/compare/1.2.0...1.3.0
+[1.2.0]: https://github.com/open-southeners/ContainerApp/compare/1.1.0...1.2.0
+[1.1.0]: https://github.com/open-southeners/ContainerApp/compare/1.0.0...1.1.0
+[1.0.0]: https://github.com/open-southeners/ContainerApp/releases/tag/1.0.0

@@ -42,6 +42,14 @@ suite with `-only-testing:ContainerAppTests/<SuiteOrTestName>`.
   real scratch containers when it runs. **Never call `pruneContainers()` there** — it deletes
   every stopped container on the developer's machine, not just the test's.
 
+## Versioning & releases
+
+`MARKETING_VERSION` in `project.yml` is the only source of the app's version; every CI build
+(branch, PR, tag) reports it. To release: bump it, move `## [Unreleased]` entries in CHANGELOG.md
+under `## [X.Y.Z] - <date>` and add its compare link, commit, then push a tag `X.Y.Z` (no `v`
+prefix). The release workflow fails if the tag doesn't match `MARKETING_VERSION` (a prerelease
+suffix like `-beta.1` is ignored) and builds the GitHub release notes from that CHANGELOG section.
+
 ## Third-party licenses
 
 The app links Apache 2.0 / MIT / BSD / OpenSSL-licensed code (the `apple/container` client,
