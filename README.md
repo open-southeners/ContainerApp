@@ -1,10 +1,6 @@
-# ContainerApp
+![banner](https://opensoutheners.com/gh_card/ContainerApp?extra[apple]=macOS%20*26%2B*&extra[bird]=Swift%20*6.2*&extra[cpu]=*Apple%20silicon*)
 
 A native macOS menu-bar app and dashboard for [Apple's `container` CLI](https://github.com/apple/container). Inspect, control, and shell into containers without leaving the menu bar.
-
-![macOS 26+](https://img.shields.io/badge/macOS-26%2B-blue)
-![Swift 6](https://img.shields.io/badge/Swift-6-orange)
-![License](https://img.shields.io/badge/license-MIT-green)
 
 The app talks to the installed container system directly through Apple's own Swift client library (`ContainerAPIClient`, the same one the `container` CLI is built on), so containers, images and stats are shared with the CLI and `container-compose`. Apple's `container` package must still be installed: the app runs `container system start`/`stop` from it, and expects the binary at `/usr/local/bin/container` (the official package location), `/opt/homebrew/bin/container`, or a custom path configured in Settings.
 
